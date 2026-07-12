@@ -7,7 +7,7 @@ A monorepo for an AI-powered debate platform.
 | Folder       | Description                                      |
 | ------------ | ------------------------------------------------ |
 | `backend/`   | Python + FastAPI API — see [backend/README.md](backend/README.md) |
-| `frontend/`  | Reserved for future UI development               |
+| `frontend/`  | Next.js + TypeScript UI — see [frontend/README.md](frontend/README.md) |
 
 ## Quick Start
 
