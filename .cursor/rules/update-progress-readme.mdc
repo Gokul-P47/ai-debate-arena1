@@ -1,0 +1,41 @@
+---
+description: Keep PROGRESS.md updated after every code change in this repo
+alwaysApply: true
+---
+
+# Update Progress README
+
+After **every** response that adds, modifies, or deletes code or project files in this repository, update [PROGRESS.md](PROGRESS.md) before finishing.
+
+## When to Update
+
+Update `PROGRESS.md` when you change:
+
+- Source code (`backend/`, future `frontend/`)
+- Tests, configs, env templates, or dependency files
+- Project docs that reflect implemented work (`README.md`, `backend/README.md`)
+
+Skip updates for question-only replies with no file changes.
+
+## What to Update
+
+1. **Last updated** — set to today's date (`YYYY-MM-DD`)
+2. **Completed** — add or mark items done in the relevant table
+3. **Not Yet Implemented** — remove items that are now done; add newly identified gaps
+4. **Change Log** — append one row per session describing what changed
+
+## Change Log Format
+
+```markdown
+| YYYY-MM-DD | Brief description of what was added, changed, or removed |
+```
+
+## Example
+
+After adding a new endpoint:
+
+```markdown
+| 2026-07-15 | Added GET /api/v1/debates/{id} endpoint and integration test |
+```
+
+Keep entries concise. Do not duplicate information already covered in the Completed tables.
