@@ -9,6 +9,8 @@ class DebateMood(str, Enum):
     """Supported debate tone presets."""
 
     SERIOUS = "SERIOUS"
+    FUN = "FUN"
+    MIXED = "MIXED"
 
 
 class DebateRequest(BaseModel):
@@ -31,4 +33,11 @@ class DebateRequest(BaseModel):
         ...,
         description="Tone and style of the debate.",
         json_schema_extra={"example": DebateMood.SERIOUS},
+    )
+    language: str = Field(
+        default="en",
+        min_length=2,
+        max_length=16,
+        description="ISO-like language code for generated arguments.",
+        json_schema_extra={"example": "en"},
     )

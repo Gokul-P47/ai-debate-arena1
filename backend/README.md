@@ -31,7 +31,10 @@ ai-debate-arena/
 │   │   │   └── opposition_agent.py
 │   │   ├── providers/              # LLM provider abstractions
 │   │   │   ├── base_provider.py
-│   │   │   └── openai_provider.py
+│   │   │   ├── factory.py          # Selects provider via LLM_PROVIDER
+│   │   │   ├── openai_provider.py
+│   │   │   ├── grok_provider.py
+│   │   │   └── gemini_provider.py
 │   │   ├── schemas/                # Pydantic request/response models
 │   │   │   ├── debate_request.py
 │   │   │   └── debate_response.py
@@ -88,12 +91,24 @@ ai-debate-arena/
    cp .env.example .env
    ```
 
-   Edit `.env` and set your values:
+   Edit `.env` and set your provider keys. Choose which backend to use with
+   `LLM_PROVIDER` (`openai`, `grok`, or `gemini`):
 
    ```env
-   OPENAI_API_KEY=your-api-key-here
-   OPENAI_MODEL=gpt-5
+   LLM_PROVIDER=openai
+
+   OPENAI_API_KEY=your-openai-key
+   OPENAI_MODEL=gpt-4o
+
+   GROK_API_KEY=your-xai-key
+   GROK_MODEL=grok-3
+
+   GEMINI_API_KEY=your-gemini-key
+   GEMINI_MODEL=gemini-3.1-flash-lite
    ```
+
+   Only the active provider’s API key is required. Switch providers by changing
+   `LLM_PROVIDER` and restarting the API.
 
 ## Running the Application
 
@@ -116,7 +131,7 @@ Interactive API documentation:
 | ------ | ----------------- | ------------------------------------ |
 | GET    | `/`               | Root — API welcome and version       |
 | GET    | `/api/v1/health`  | Health check                         |
-| POST   | `/api/v1/debates` | Create debate (placeholder response) |
+| POST   | `/api/v1/debates` | Run multi-round debate; returns transcript |
 
 ## Running Tests
 
@@ -134,11 +149,10 @@ pytest -v
 
 ## Future Roadmap
 
-- **Phase 2 — Debate Engine**: Implement OpenAI provider, agent logic, and multi-round debate orchestration
 - **Phase 3 — Streaming**: Add real-time streaming of debate turns via Server-Sent Events or WebSockets
-- **Phase 4 — Frontend**: Build a React/Next.js UI in `frontend/` for topic input, live debate viewing, and history
+- **Phase 4 — Frontend integration**: Connect Next.js UI to `POST /api/v1/debates`
 - **Phase 5 — Persistence**: Add database storage for debate sessions and replay
-- **Phase 6 — Multi-Provider**: Support additional LLM providers (Anthropic, Google, local models)
+- **Phase 6 — More providers**: Optional Anthropic / local models beyond OpenAI, Grok, and Gemini
 
 ## License
 

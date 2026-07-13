@@ -1,14 +1,21 @@
-"""System prompts for debate agents.
+"""Prompt helpers — re-exports dynamic templates for convenience."""
 
-Placeholder constants for future debate generation logic.
-"""
-
-SUPPORT_AGENT_SYSTEM_PROMPT: str = (
-    "You are a support agent in a structured debate. "
-    "Argue in favor of the given topic."
+from app.core.prompt_templates import (
+    MOOD_STYLE,
+    language_label,
+    mood_instruction,
+    render_opposition_system_prompt,
+    render_opposition_user_prompt,
+    render_support_system_prompt,
+    render_support_user_prompt,
 )
 
-OPPOSITION_AGENT_SYSTEM_PROMPT: str = (
-    "You are an opposition agent in a structured debate. "
-    "Argue against the given topic."
-)
+__all__ = [
+    "MOOD_STYLE",
+    "language_label",
+    "mood_instruction",
+    "render_opposition_system_prompt",
+    "render_opposition_user_prompt",
+    "render_support_system_prompt",
+    "render_support_user_prompt",
+]

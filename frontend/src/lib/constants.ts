@@ -16,24 +16,31 @@ export const DEBATE_MOODS: { value: DebateMood; label: string }[] = [
   { value: 'MIXED', label: 'Mixed' },
 ];
 
+export const DEBATE_LANGUAGES: { value: string; label: string }[] = [
+  { value: 'en', label: 'English' },
+  { value: 'ta', label: 'Tamil' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'te', label: 'Telugu' },
+  { value: 'ml', label: 'Malayalam' },
+  { value: 'kn', label: 'Kannada' },
+];
+
+export const DEFAULT_LANGUAGE = 'en';
 export const DEFAULT_ROUNDS = 3;
 export const MIN_ROUNDS = 1;
 export const MAX_ROUNDS = 10;
 
-export const PLACEHOLDER_MESSAGE =
-  'Debate generation will be implemented in the next phase.';
-
 export const AGENTS = {
   support: {
     id: 'agent-a',
-    name: 'Agent A',
+    name: 'Support',
     role: 'support' as const,
-    label: 'Support Agent',
+    label: 'For the motion',
   },
   opposition: {
     id: 'agent-b',
-    name: 'Agent B',
+    name: 'Opposition',
     role: 'opposition' as const,
-    label: 'Opposition Agent',
+    label: 'Against the motion',
   },
 };
