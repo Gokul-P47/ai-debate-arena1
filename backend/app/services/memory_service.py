@@ -1,14 +1,21 @@
-"""Structured claim memory manager for debates."""
+"""Structured claim memory manager for multi-guest talk shows."""
 
 from datetime import datetime, timezone
 
+from app.core.participants import GuestSpec, guests_for_count, is_guest_role
 from app.schemas.claim import (
     AgentClaimMemory,
     ClaimStatus,
     DebateClaim,
     DebateState,
 )
-from app.schemas.debate_response import DebateMessage, DebateSummary, DebateTurn, SpeakerRole
+from app.schemas.debate_response import (
+    DebateMessage,
+    DebateSummary,
+    DebateTurn,
+    ParticipantSummary,
+    SpeakerRole,
+)
 from app.services.claim_extractor import ExtractedClaim
 from app.utils.logger import get_logger
 
@@ -16,27 +23,48 @@ logger = get_logger(__name__)
 
 
 class MemoryService:
-    """Stores transcript messages and structured per-agent claim memories.
+    """Stores transcript messages and structured per-guest claim memories."""
 
-    Agents never mutate opponent memory. Only ``DebateService`` (via this
-    service) appends claims and updates statuses.
-    """
-
-    def __init__(self, *, debate_id: str, topic: str, language: str, mood: str) -> None:
+    def __init__(
+        self,
+        *,
+        debate_id: str,
+        topic: str,
+        language: str,
+        mood: str,
+        guests: list[GuestSpec] | None = None,
+        news_articles: list[dict[str, str]] | None = None,
+    ) -> None:
         self._debate_id = debate_id
         self._topic = topic
         self._language = language
         self._mood = mood
         self._current_round = 0
         self._claim_counter = 0
+        self._guests = list(guests) if guests is not None else guests_for_count(2)
+        self._news_articles = list(news_articles) if news_articles else []
 
-        self._support_memory = AgentClaimMemory(role=SpeakerRole.SUPPORT)
-        self._opposition_memory = AgentClaimMemory(role=SpeakerRole.OPPOSITION)
+        self._memories: dict[SpeakerRole, AgentClaimMemory] = {
+            g.role: AgentClaimMemory(role=g.role) for g in self._guests
+        }
+        # Ensure legacy slots exist even if somehow empty (tests).
+        if SpeakerRole.SUPPORT not in self._memories:
+            self._memories[SpeakerRole.SUPPORT] = AgentClaimMemory(role=SpeakerRole.SUPPORT)
+        if SpeakerRole.OPPOSITION not in self._memories:
+            self._memories[SpeakerRole.OPPOSITION] = AgentClaimMemory(
+                role=SpeakerRole.OPPOSITION
+            )
 
         self._messages: list[DebateMessage] = []
         self._turns: list[DebateTurn] = []
 
-    # ── Transcript (for API / UI only; not used as LLM prompt memory) ─────────
+    @property
+    def guests(self) -> list[GuestSpec]:
+        return list(self._guests)
+
+    @property
+    def news_articles(self) -> list[dict[str, str]]:
+        return list(self._news_articles)
 
     def add_message(self, message: DebateMessage) -> None:
         self._messages.append(message)
@@ -62,26 +90,29 @@ class MemoryService:
     def turn_count(self) -> int:
         return len(self._turns)
 
-    @property
-    def latest_support_content(self) -> str | None:
+    def latest_content_for(self, role: SpeakerRole) -> str | None:
         for message in reversed(self._messages):
-            if message.role == SpeakerRole.SUPPORT:
+            if message.role == role:
                 return message.content
         return None
+
+    @property
+    def latest_support_content(self) -> str | None:
+        return self.latest_content_for(SpeakerRole.SUPPORT)
 
     @property
     def latest_opposition_content(self) -> str | None:
-        for message in reversed(self._messages):
-            if message.role == SpeakerRole.OPPOSITION:
-                return message.content
-        return None
-
-    # ── Claim memory ─────────────────────────────────────────────────────────
+        return self.latest_content_for(SpeakerRole.OPPOSITION)
 
     def memory_for(self, role: SpeakerRole) -> AgentClaimMemory:
-        if role == SpeakerRole.SUPPORT:
-            return self._support_memory
-        return self._opposition_memory
+        if role == SpeakerRole.HOST or not is_guest_role(role):
+            raise ValueError("Only guest roles own claim memory.")
+        if role not in self._memories:
+            self._memories[role] = AgentClaimMemory(role=role)
+        return self._memories[role]
+
+    def other_guest_roles(self, role: SpeakerRole) -> list[SpeakerRole]:
+        return [g.role for g in self._guests if g.role != role]
 
     def _next_claim_id(self) -> str:
         self._claim_counter += 1
@@ -94,7 +125,8 @@ class MemoryService:
         *,
         round_number: int,
     ) -> list[DebateClaim]:
-        """Append newly extracted claims into the owning agent's memory only."""
+        if role == SpeakerRole.HOST:
+            raise ValueError("Host remarks are not stored as debate claims.")
         memory = self.memory_for(role)
         created: list[DebateClaim] = []
         existing = {c.claim.strip().lower() for c in memory.claims}
@@ -142,7 +174,6 @@ class MemoryService:
         claim_id: str,
         statement: str,
     ) -> DebateClaim | None:
-        """Mark an owned claim as CONTRADICTED and record the opposing reason."""
         memory = self.memory_for(owner_role)
         for claim in memory.claims:
             if claim.id != claim_id:
@@ -162,7 +193,6 @@ class MemoryService:
         claim_id: str,
         statement: str,
     ) -> DebateClaim | None:
-        """Mark an owned claim as DEFENDED after the owner reinforces it."""
         memory = self.memory_for(owner_role)
         for claim in memory.claims:
             if claim.id != claim_id:
@@ -184,11 +214,9 @@ class MemoryService:
         return None
 
     def already_used_claims(self, role: SpeakerRole) -> list[str]:
-        """Claim texts already used by this agent (for anti-repetition)."""
         return [c.claim for c in self.memory_for(role).claims]
 
     def format_claims(self, role: SpeakerRole) -> str:
-        """Human-readable claim list for prompts."""
         claims = self.memory_for(role).claims
         if not claims:
             return "(No claims recorded yet.)"
@@ -208,6 +236,17 @@ class MemoryService:
             )
         return "\n".join(lines)
 
+    def format_peers_memory(self, role: SpeakerRole) -> str:
+        peers = self.other_guest_roles(role)
+        if not peers:
+            return "(No other guests yet.)"
+        blocks: list[str] = []
+        name_by_role = {g.role: g.name for g in self._guests}
+        for peer in peers:
+            label = name_by_role.get(peer, peer.value)
+            blocks.append(f"{label}:\n{self.format_claims(peer)}")
+        return "\n\n".join(blocks)
+
     def format_already_used(self, role: SpeakerRole) -> str:
         used = self.already_used_claims(role)
         if not used:
@@ -217,7 +256,7 @@ class MemoryService:
     def format_defend_or_refine(self, role: SpeakerRole) -> str:
         contradicted = self.memory_for(role).contradicted_claims()
         if not contradicted:
-            return "(None — introduce a new argument or extend an ACTIVE claim carefully.)"
+            return "(None — introduce a new idea or gently extend an ACTIVE claim.)"
         lines = []
         for claim in contradicted:
             challenge = claim.contradicted_by[-1] if claim.contradicted_by else "challenged"
@@ -226,33 +265,53 @@ class MemoryService:
             )
         return "\n".join(lines)
 
+    def open_claims_for_roles(self, roles: list[SpeakerRole]) -> list[DebateClaim]:
+        claims: list[DebateClaim] = []
+        for role in roles:
+            claims.extend(self.memory_for(role).open_claims())
+        return claims
+
     def summarized_context(self) -> str:
-        """Compact debate context derived from claim memories."""
-        return (
-            "Support claims:\n"
-            f"{self.format_claims(SpeakerRole.SUPPORT)}\n\n"
-            "Opposition claims:\n"
-            f"{self.format_claims(SpeakerRole.OPPOSITION)}"
-        )
+        blocks: list[str] = []
+        name_by_role = {g.role: g.name for g in self._guests}
+        for guest in self._guests:
+            label = name_by_role.get(guest.role, guest.role.value)
+            blocks.append(f"{label} claims:\n{self.format_claims(guest.role)}")
+        return "\n\n".join(blocks) if blocks else "(No claims yet.)"
 
     def to_debate_summary(self) -> DebateSummary:
-        """Build API summary fields from structured claims."""
-        support_points = [c.claim for c in self._support_memory.claims]
-        opposition_points = [c.claim for c in self._opposition_memory.claims]
+        support_points = [c.claim for c in self.memory_for(SpeakerRole.SUPPORT).claims]
+        opposition_points = [
+            c.claim for c in self.memory_for(SpeakerRole.OPPOSITION).claims
+        ]
+        participants = [
+            ParticipantSummary(
+                role=g.role,
+                name=g.name,
+                points=[c.claim for c in self.memory_for(g.role).claims],
+            )
+            for g in self._guests
+        ]
         return DebateSummary(
             text=self.summarized_context(),
             support_points=support_points,
             opposition_points=opposition_points,
+            participants=participants,
         )
 
     def snapshot(self) -> DebateState:
-        """Return a serializable central debate state."""
+        guest_memories = [
+            self.memory_for(g.role).model_copy(deep=True) for g in self._guests
+        ]
         return DebateState(
             debate_id=self._debate_id,
             topic=self._topic,
             language=self._language,
             mood=self._mood,
-            support_memory=self._support_memory.model_copy(deep=True),
-            opposition_memory=self._opposition_memory.model_copy(deep=True),
+            support_memory=self.memory_for(SpeakerRole.SUPPORT).model_copy(deep=True),
+            opposition_memory=self.memory_for(SpeakerRole.OPPOSITION).model_copy(
+                deep=True
+            ),
+            guest_memories=guest_memories,
             current_round=self._current_round,
         )

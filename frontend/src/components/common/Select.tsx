@@ -28,10 +28,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ref={ref}
           id={selectId}
           className={[
-            'w-full rounded-lg border border-gray-700 bg-gray-900/80 px-4 py-2.5',
-            'text-gray-100',
-            'transition-colors duration-200',
-            'focus:border-blue-500/60 focus:outline-none focus:ring-2 focus:ring-blue-500/20',
+            'w-full rounded-xl border border-slate-800 bg-[#0f1922] px-4 py-2.5',
+            'text-[#f8f1e3]',
+            'transition-all duration-200',
+            'focus:border-amber-400/80 focus:outline-none focus:ring-4 focus:ring-amber-400/10',
             'disabled:cursor-not-allowed disabled:opacity-50',
             error ? 'border-red-500/60 focus:border-red-500/60 focus:ring-red-500/20' : '',
             className,

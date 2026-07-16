@@ -1,17 +1,21 @@
-/** Single debate message bubble. */
+/** Single debate message bubble (supports subtitle-synced reveal). */
 
-import type { DebateMessage as DebateMessageType } from '@/types/debate';
+import { revealTextByRatio } from '@/lib/subtitleReveal';
+import type { AgentRole, DebateMessage as DebateMessageType } from '@/types/debate';
 
 interface DebateMessageProps {
   message: DebateMessageType;
-  variant?: 'support' | 'opposition';
+  variant?: AgentRole;
   isLatest?: boolean;
   showCursor?: boolean;
 }
 
-const variantStyles = {
-  support: 'border-blue-500/30 bg-blue-500/10',
-  opposition: 'border-purple-500/30 bg-purple-500/10',
+const variantStyles: Record<AgentRole, string> = {
+  host: 'border-amber-400/30 bg-amber-500/10',
+  support: 'border-teal-400/30 bg-teal-500/10',
+  opposition: 'border-rose-400/30 bg-rose-500/10',
+  guest3: 'border-sky-400/30 bg-sky-500/10',
+  guest4: 'border-violet-400/30 bg-violet-500/10',
 };
 
 export function DebateMessage({
@@ -20,6 +24,9 @@ export function DebateMessage({
   isLatest = false,
   showCursor = false,
 }: DebateMessageProps) {
+  const ratio = message.revealRatio ?? 1;
+  const visible = revealTextByRatio(message.content, ratio);
+
   return (
     <article
       className={[
@@ -36,7 +43,7 @@ export function DebateMessage({
         <span className="text-xs text-gray-500">Round {message.roundNumber}</span>
       </div>
       <p className="whitespace-pre-wrap">
-        {message.content}
+        {visible}
         {showCursor && <span className="debate-stream-cursor ml-0.5 inline-block">▍</span>}
       </p>
     </article>

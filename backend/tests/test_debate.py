@@ -78,9 +78,25 @@ class FakeProvider(BaseProvider):
                 )
             return json.dumps({"contradicted_claims": [], "defended_claims": []})
 
-        if "opposition agent" in lower or "oppose the debate topic" in lower:
+        if "you are the host of a live ai talk show" in lower:
+            self._agent_n += 1
+            if "segment: opening" in prompt.lower():
+                return f"Host opening #{self._agent_n}: Welcome to the talk show."
+            if "segment: closing" in prompt.lower():
+                return f"Host closing #{self._agent_n}: Thanks for joining us tonight."
+            return f"Host segment #{self._agent_n}: Let's keep the chat going — first guest, over to you."
+
+        if "sarah" in lower or "friendly critic" in lower or "soft opposition" in lower or "soft_skeptic" in lower or "skeptic" in lower:
             self._agent_n += 1
             return f"Opposition reply #{self._agent_n}: Lower costs often reduce quality."
+
+        if "winston" in lower or "pragmatist" in lower or "it depends" in lower or "realist" in lower:
+            self._agent_n += 1
+            return f"Pragmatist reply #{self._agent_n}: It can work in some places, not everywhere."
+
+        if "chloe" in lower or "wild card" in lower or "surprise angle" in lower or "tangent_generator" in lower:
+            self._agent_n += 1
+            return f"Wildcard reply #{self._agent_n}: What if we rethink the whole framing?"
 
         self._agent_n += 1
         return (
@@ -186,6 +202,7 @@ def test_context_builder_centralizes_prompts_without_transcript() -> None:
         language="en",
         round_number=2,
         total_rounds=3,
+        turn_seconds=45,
         opponent_latest="Cheap means lower quality.",
     )
     assert "AI should be regulated" in support_prompt.user_prompt
@@ -194,6 +211,7 @@ def test_context_builder_centralizes_prompts_without_transcript() -> None:
     assert "CONTRADICTED" in support_prompt.user_prompt
     assert "Full transcript" not in support_prompt.user_prompt
     assert "do NOT repeat" in support_prompt.user_prompt.lower() or "Already used" in support_prompt.user_prompt
+    assert "45 seconds" in support_prompt.user_prompt or "word" in support_prompt.system_prompt.lower()
 
     opposition_prompt = builder.build_opposition_prompt(
         topic="AI should be regulated",
@@ -201,10 +219,27 @@ def test_context_builder_centralizes_prompts_without_transcript() -> None:
         language="ta",
         round_number=2,
         total_rounds=3,
+        turn_seconds=30,
         opponent_latest="AI still reduces net cost.",
     )
     assert "Tamil" in opposition_prompt.system_prompt
     assert "Human creativity is irreplaceable" in opposition_prompt.user_prompt
+    assert "30 seconds" in opposition_prompt.user_prompt
+
+    from app.schemas.roles import HostSegment
+
+    host_prompt = builder.build_host_prompt(
+        topic="AI should be regulated",
+        mood=DebateMood.SERIOUS,
+        language="en",
+        round_number=1,
+        total_rounds=3,
+        turn_seconds=45,
+        segment=HostSegment.OPENING,
+    )
+    assert host_prompt.side == SpeakerRole.HOST
+    assert "do NOT argue" in host_prompt.system_prompt or "do not argue" in host_prompt.system_prompt.lower()
+    assert "Welcome" in host_prompt.user_prompt or "welcome" in host_prompt.user_prompt.lower() or "talk show" in host_prompt.system_prompt.lower()
 
 
 def test_claim_extractor_returns_category_confidence_importance() -> None:
@@ -234,7 +269,14 @@ def test_debate_service_tracks_claims_across_rounds() -> None:
     )
     result = asyncio.run(service.create_debate(request))
 
-    assert len(result.transcript) == 2
+    # Host opening + Host round + Support + Opposition + Host closing
+    assert len(result.transcript) == 5
+    assert result.transcript[0].role == SpeakerRole.HOST
+    assert result.transcript[1].role == SpeakerRole.HOST
+    assert result.transcript[2].role == SpeakerRole.SUPPORT
+    assert result.transcript[3].role == SpeakerRole.OPPOSITION
+    assert result.transcript[4].role == SpeakerRole.HOST
+    assert result.metadata.extra.get("hosted") is True
     assert result.claim_memory is not None
     support_claims = result.claim_memory.support_memory.claims
     assert support_claims
@@ -285,6 +327,58 @@ def test_stream_debate_emits_tokens_and_lifecycle_events() -> None:
     assert names[0] == "debate_started"
     assert "token" in names
     assert names[-1] == "debate_completed"
+    turn_roles = [
+        item["data"]["role"]
+        for item in events
+        if item["event"] == "turn_started"
+    ]
+    assert turn_roles == ["host", "host", "support", "opposition", "host"]
+    started = next(item for item in events if item["event"] == "debate_started")
+    assert started["data"]["participantCount"] == 2
+    assert len(started["data"]["participants"]) == 2
+
+
+def test_stream_debate_with_four_guests() -> None:
+    provider = FakeProvider()
+    service = DebateService(provider=provider)
+    request = DebateRequest(
+        topic="Remote work forever?",
+        rounds=1,
+        mood=DebateMood.MIXED,
+        language="en",
+        participant_count=4,
+    )
+
+    async def _collect() -> list[dict]:
+        return [item async for item in service.stream_debate(request)]
+
+    events = asyncio.run(_collect())
+    started = next(item for item in events if item["event"] == "debate_started")
+    assert started["data"]["participantCount"] == 4
+    assert len(started["data"]["participants"]) == 4
+    roles = [p["role"] for p in started["data"]["participants"]]
+    assert roles == ["support", "opposition", "guest3", "guest4"]
+
+    turn_roles = [
+        item["data"]["role"]
+        for item in events
+        if item["event"] == "turn_started"
+    ]
+    # opening host, round host, 4 guests, closing host
+    assert turn_roles == [
+        "host",
+        "host",
+        "support",
+        "opposition",
+        "guest3",
+        "guest4",
+        "host",
+    ]
+
+    completed = next(item for item in events if item["event"] == "debate_completed")
+    summary = completed["data"]["summary"]
+    assert summary is not None
+    assert len(summary.get("participants") or []) == 4
 
 
 def test_stream_debate_endpoint_returns_sse(monkeypatch: pytest.MonkeyPatch) -> None:

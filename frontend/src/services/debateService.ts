@@ -15,6 +15,8 @@ export async function startDebate(request: DebateRequest): Promise<DebateRespons
     mood: request.mood,
     rounds: request.rounds,
     language: request.language ?? 'en',
+    turnSeconds: request.turnSeconds ?? 45,
+    participantCount: request.participantCount ?? 2,
   });
   return data;
 }
@@ -38,6 +40,8 @@ export async function streamDebate(
       mood: request.mood,
       rounds: request.rounds,
       language: request.language ?? 'en',
+      turnSeconds: request.turnSeconds ?? 45,
+      participantCount: request.participantCount ?? 2,
     }),
     signal,
   });

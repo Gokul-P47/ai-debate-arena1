@@ -52,6 +52,69 @@ class Settings(BaseSettings):
         description="How many recent messages ContextBuilder includes in prompts",
     )
 
+    # TTS Configuration (optional — debates still stream text without a key)
+    tts_enabled: bool = Field(
+        default=True,
+        description="When true and an API key is set, synthesize speech per turn",
+    )
+    tts_provider: Literal["elevenlabs", "openai"] = Field(
+        default="elevenlabs",
+        description="Active TTS provider: elevenlabs | openai",
+    )
+
+    # ElevenLabs TTS Settings
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
+    elevenlabs_model: str = Field(
+        default="eleven_flash_v2_5",
+        description="ElevenLabs TTS model id (flash for low-latency live debates)",
+    )
+    elevenlabs_voice_host: str = Field(
+        default="JBFqnCBsd6RMkjVDRZzb",
+        description="ElevenLabs voice id for the Host",
+    )
+    elevenlabs_voice_support: str = Field(
+        default="EXAVITQu4vr4xnSDxMaL",
+        description="ElevenLabs voice id for Support",
+    )
+    elevenlabs_voice_opposition: str = Field(
+        default="pNInz6obpgDQGcFmaJgB",
+        description="ElevenLabs voice id for Friendly Critic (guest 2)",
+    )
+    elevenlabs_voice_guest3: str = Field(
+        default="VR6AewLTigWG4xSOukaG",
+        description="ElevenLabs voice id for Pragmatist (guest 3)",
+    )
+    elevenlabs_voice_guest4: str = Field(
+        default="TxGEqnHWrfWFTfGW9XjX",
+        description="ElevenLabs voice id for Wild Card (guest 4)",
+    )
+
+    # OpenAI TTS Settings
+    openai_tts_model: str = Field(
+        default="tts-1",
+        description="OpenAI TTS model id: tts-1 | tts-1-hd",
+    )
+    openai_voice_host: str = Field(
+        default="alloy",
+        description="OpenAI voice for the Host: alloy | echo | fable | onyx | nova | shimmer",
+    )
+    openai_voice_support: str = Field(
+        default="echo",
+        description="OpenAI voice for Support debater",
+    )
+    openai_voice_opposition: str = Field(
+        default="nova",
+        description="OpenAI voice for Opposition debater",
+    )
+    openai_voice_guest3: str = Field(
+        default="onyx",
+        description="OpenAI voice for Guest 3",
+    )
+    openai_voice_guest4: str = Field(
+        default="shimmer",
+        description="OpenAI voice for Guest 4",
+    )
+
     @field_validator("llm_provider", mode="before")
     @classmethod
     def normalize_llm_provider(cls, value: object) -> object:

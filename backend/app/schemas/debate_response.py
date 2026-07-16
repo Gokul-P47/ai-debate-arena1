@@ -40,13 +40,28 @@ class DebateMessage(BaseModel):
 
 
 class DebateTurn(BaseModel):
-    """One complete round: support argument followed by opposition reply."""
+    """One complete round: every guest speaks once (Host remarks live in transcript)."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     round_number: int = Field(..., ge=1, serialization_alias="roundNumber")
-    support: DebateMessage
-    opposition: DebateMessage
+    messages: list[DebateMessage] = Field(
+        default_factory=list,
+        description="Guest messages for this round, in speaking order.",
+    )
+    # Back-compat aliases for 2-guest shows / older clients
+    support: DebateMessage | None = None
+    opposition: DebateMessage | None = None
+
+
+class ParticipantSummary(BaseModel):
+    """Points raised by one guest."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    role: SpeakerRole
+    name: str = ""
+    points: list[str] = Field(default_factory=list)
 
 
 class DebateSummary(BaseModel):
@@ -58,12 +73,16 @@ class DebateSummary(BaseModel):
     support_points: list[str] = Field(
         default_factory=list,
         serialization_alias="supportPoints",
-        description="Key support claims raised so far.",
+        description="Key Advocate (guest 1) claims.",
     )
     opposition_points: list[str] = Field(
         default_factory=list,
         serialization_alias="oppositionPoints",
-        description="Key opposition claims raised so far.",
+        description="Key Friendly Critic (guest 2) claims.",
+    )
+    participants: list[ParticipantSummary] = Field(
+        default_factory=list,
+        description="Per-guest highlight points for all participants.",
     )
 
 

@@ -10,7 +10,7 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-OPPOSITION_SPEAKER_NAME = "Opposition Agent"
+OPPOSITION_SPEAKER_NAME = "Sarah"
 
 
 class OppositionAgent:

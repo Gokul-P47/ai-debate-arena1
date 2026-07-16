@@ -4,7 +4,7 @@ A monorepo for an AI-powered debate platform where language models argue opposin
 
 ## Project Overview
 
-**AI Debate Arena** orchestrates multi-agent debates using large language models. Two agents — Support and Opposition — take turns presenting arguments on a user-defined topic. This repository is organized as a monorepo with separate backend and frontend packages.
+**AI Debate Arena** (product UI: **AI Talk Show**) orchestrates a hosted multi-agent chat using large language models. A Host keeps the show moving while Advocate and Friendly Critic guests share friendly, soft-opposition views on a topic.
 
 | Package    | Status        | Description                                      |
 | ---------- | ------------- | ------------------------------------------------ |

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import debate, health
+from app.api.routes import audio, debate, health
 
 load_dotenv()
 
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix=API_V1_PREFIX)
 app.include_router(debate.router, prefix=API_V1_PREFIX)
+app.include_router(audio.router, prefix=API_V1_PREFIX)
 
 
 @app.get("/")

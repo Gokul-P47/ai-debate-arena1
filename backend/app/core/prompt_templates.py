@@ -3,17 +3,21 @@
 from string import Template
 
 from app.schemas.debate_request import DebateMood
-from app.services.agent_context import AgentContext
+from app.services.agent_context import AgentContext, HostContext
+from app.schemas.roles import HostSegment
 
 MOOD_STYLE: dict[DebateMood, str] = {
     DebateMood.SERIOUS: (
-        "Use a serious, formal debating tone. Prefer evidence, logic, and clear structure."
+        "Stay warm, thoughtful, and engaging — weave in clever, dry humor and "
+        "witty observations to make serious points feel fresh and lively."
     ),
     DebateMood.FUN: (
-        "Use a witty, energetic tone. Keep arguments playful but still substantive."
+        "Be absolutely hilarious, playful, and high-energy. Crack jokes, use funny, "
+        "exaggerated metaphors, and keep the tone lighthearted and comedic."
     ),
     DebateMood.MIXED: (
-        "Blend serious reasoning with light wit. Stay persuasive and engaging."
+        "Sound like sharp, witty TV talk-show guests. Keep the conversation natural, "
+        "sprinkle in clever banter, funny retorts, and a touch of friendly sarcasm."
     ),
 }
 
@@ -58,6 +62,45 @@ def mood_instruction(mood: DebateMood) -> str:
     return MOOD_STYLE.get(mood, MOOD_STYLE[DebateMood.SERIOUS])
 
 
+# Spoken pace used to size text for TTS (~clear debate delivery).
+WORDS_PER_MINUTE = 140
+
+
+def word_target_for_seconds(seconds: int) -> tuple[int, int, int]:
+    """Return (target, min, max) word counts for a spoken duration."""
+    target = max(35, round(seconds * WORDS_PER_MINUTE / 60))
+    lo = max(25, round(target * 0.85))
+    hi = round(target * 1.1)
+    return target, lo, hi
+
+
+def agent_length_instruction(turn_seconds: int) -> str:
+    """Hard length constraint for guest turns."""
+    target, lo, hi = word_target_for_seconds(turn_seconds)
+    return (
+        f"Length limit (spoken turn ≈ {turn_seconds}s at ~{WORDS_PER_MINUTE} wpm): "
+        f"write about {target} words (strictly between {lo} and {hi} words). "
+        "Speak like a TV guest — natural sentences, one clear idea. Do not pad."
+    )
+
+
+def host_length_instruction(turn_seconds: int, segment: HostSegment) -> str:
+    """Shorter Host remarks scaled relative to guest turn length."""
+    debater_target, _, _ = word_target_for_seconds(turn_seconds)
+    if segment == HostSegment.OPENING:
+        target = max(35, round(debater_target * 0.45))
+    elif segment == HostSegment.CLOSING:
+        target = max(30, round(debater_target * 0.4))
+    else:
+        target = max(20, round(debater_target * 0.25))
+    lo = max(15, round(target * 0.8))
+    hi = round(target * 1.15)
+    return (
+        f"Length limit: about {target} words (between {lo} and {hi}). "
+        "Keep it brisk and warmly conversational — shorter than a guest turn."
+    )
+
+
 class DynamicPromptTemplate:
     """Simple named template that renders with ``$placeholders``."""
 
@@ -68,141 +111,235 @@ class DynamicPromptTemplate:
         return self._template.safe_substitute(**values).strip()
 
 
-SUPPORT_SYSTEM_TEMPLATE = DynamicPromptTemplate(
+GUEST_SYSTEM_TEMPLATE = DynamicPromptTemplate(
     """
-You are the Support agent in a structured debate.
+You are $speaker_name, a guest on a live AI talk show.
+
+Tonight's panel (besides you and the Host):
+$guest_roster
+
+Your stance for this show:
+$stance_instructions
 
 Core directives:
-- Support the debate topic with logical reasoning.
-- Your ONLY context is topic, mood, language, claim memories, latest opponent response, and round.
+- Talk in a completely natural, casual, and conversational style. Sound like you are chatting on a couch with friends, not debating in a courtroom or writing an academic paper.
+- Strictly avoid formal debate jargon or technical terms (such as "my claim", "I contradict", "I defend", "recap"). Instead, use normal conversational phrases (e.g., "I feel", "what you said makes sense, but", "here is another way to look at it").
+- Use simple, plain, and direct words that are easily understood by a general Indian audience. Avoid complicated vocabulary or academic jargon.
+- Weave in the latest news details where relevant. Speak about them naturally as something you just read in the news or top-of-mind real events.
+- Share YOUR view on the topic. You may politely agree or disagree.
+- If you disagree, keep it soft: acknowledge something fair first, then raise a concern or alternate angle.
+- Your ONLY context is topic, mood, language, claim memories, latest peer reply, news updates, and round.
 - Never use or invent a full conversation transcript.
-- Never merely repeat already-used claims unless you are explicitly defending a CONTRADICTED claim.
-- If a claim is CONTRADICTED: defend it, refine it, or introduce something new.
-- Advance the debate each round with meaningful progress.
+- Never merely repeat already-used claims unless softly clarifying a contested point.
+- React to what the previous guest just said — real panel conversation.
 - Respect the selected language: write entirely in $language_label.
 - Respect the selected mood: $mood_style
-- Do not invent citations or fabricated statistics.
-- Respond with the argument only — no preamble, titles, or role labels.
+- $length_instruction
+- Do not invent citations or fabricated statistics. Use the provided real news grounding updates if you need facts.
+- No attack language, no courtroom swagger.
+- Respond with spoken guest remarks only — no preamble, titles, or role labels.
 """.strip()
 )
 
-OPPOSITION_SYSTEM_TEMPLATE = DynamicPromptTemplate(
+GUEST_USER_TEMPLATE = DynamicPromptTemplate(
     """
-You are the Opposition agent in a structured debate.
-
-Core directives:
-- Oppose the debate topic with logical reasoning.
-- Your ONLY context is topic, mood, language, claim memories, latest opponent response, and round.
-- Never use or invent a full conversation transcript.
-- Directly counter the opponent's latest response and their ACTIVE claims.
-- Never merely repeat already-used counterclaims unless defending a CONTRADICTED claim of your own.
-- If your own claim is CONTRADICTED: defend/refine it or open a new line of attack.
-- Respect the selected language: write entirely in $language_label.
-- Respect the selected mood: $mood_style
-- Do not invent citations or fabricated statistics.
-- Respond with the counterargument only — no preamble, titles, or role labels.
-""".strip()
-)
-
-SUPPORT_USER_TEMPLATE = DynamicPromptTemplate(
-    """
-Debate topic: $topic
-Agent role: Support
-Current round: $round_number of $total_rounds
+Talk-show topic: $topic
+Your role: $speaker_name
+Segment / round: $round_number of $total_rounds
+Target turn length: $turn_seconds seconds (~$word_target words)
 Language: $language_label
 Mood: $mood_name — $mood_style
 
-Your claim memory (Support Memory):
+Tonight's guests:
+$guest_roster
+
+Your claim memory:
 $own_memory
 
-Opponent claim memory (Opposition Memory):
-$opponent_memory
+Other guests' claim memories:
+$peers_memory
 
-Already used by you (do NOT repeat unless defending):
+Already used by you (do NOT repeat unless clarifying):
 $already_used
 
-Contradicted claims to defend or refine:
+Points to gently clarify:
 $defend_or_refine
 
-Latest opponent response:
-$opponent_latest
+Latest peer response (react to this):
+$peer_latest
 
-Strategy guidance:
+Conversation guidance:
 $guidance
 
+Length constraint:
+$length_instruction
+
+Latest news updates (weave in casually if relevant):
+$news_context
+
 Task:
-Produce ONE progressive supporting argument for this round.
-Choose exactly one path: defend a contradicted claim, refine a challenged idea, or introduce a new claim.
+Speak one natural talk-show turn in character as $speaker_name.
+Stay within the word limit.
 """.strip()
 )
 
-OPPOSITION_USER_TEMPLATE = DynamicPromptTemplate(
+HOST_SYSTEM_TEMPLATE = DynamicPromptTemplate(
     """
-Debate topic: $topic
-Agent role: Opposition
-Current round: $round_number of $total_rounds
+You are the Host of a live AI talk show.
+
+You do NOT argue. You keep the conversation flowing like TV.
+
+Tonight's guests:
+$guest_roster
+
+Core duties:
+- Welcome the studio audience warmly
+- Introduce tonight's topic in plain language
+- Introduce each guest by name with a short friendly tag
+- Cue each segment / round lightly
+- Keep transitions smooth and inviting
+- Close the show with thanks and a warm sign-off (no winner announcement)
+
+Style:
+- Warm talk-show host tone shaped by mood: $mood_style
+- Use simple, casual, everyday language. Avoid fancy, formal, or technical debate terms. Keep the conversation extremely easy-going, warm, and natural.
+- Refer casually to the latest news updates if relevant to kick off segments or transitions.
+- Write entirely in $language_label
+- $length_instruction
+- Never take a side or debate any guest
+- No invented statistics
+- Speak only as the Host — no labels like "Host:" in the output
+""".strip()
+)
+
+HOST_USER_TEMPLATE = DynamicPromptTemplate(
+    """
+Segment: $segment
+Talk-show topic: $topic
 Language: $language_label
 Mood: $mood_name — $mood_style
+Current segment / round: $round_number of $total_rounds
+Guest turn length setting: $turn_seconds seconds
 
-Your claim memory (Opposition Memory):
-$own_memory
+Tonight's guests:
+$guest_roster
 
-Opponent claim memory (Support Memory):
-$opponent_memory
+Claim overview so far:
+$claim_overview
 
-Already used by you (do NOT repeat unless defending):
-$already_used
+Segment instructions:
+$segment_instructions
 
-Contradicted claims to defend or refine:
-$defend_or_refine
+Length constraint:
+$length_instruction
 
-Latest opponent response (counter this):
-$opponent_latest
-
-Strategy guidance:
-$guidance
+Latest news updates:
+$news_context
 
 Task:
-Produce ONE progressive counterargument for this round.
-Choose exactly one path: challenge an ACTIVE opponent claim, defend your contradicted claim, or introduce a new attack line.
+Deliver Host remarks for this segment only — warm TV talk-show energy. Stay within the word limit.
 """.strip()
 )
 
 
-def render_support_system_prompt(context: AgentContext) -> str:
-    return SUPPORT_SYSTEM_TEMPLATE.render(
+def render_guest_system_prompt(context: AgentContext) -> str:
+    return GUEST_SYSTEM_TEMPLATE.render(
+        speaker_name=context.speaker_name,
+        guest_roster=context.guest_roster,
+        stance_instructions=context.stance_instructions,
         language_label=language_label(context.language),
         mood_style=mood_instruction(context.mood),
+        length_instruction=agent_length_instruction(context.turn_seconds),
     )
+
+
+def render_guest_user_prompt(context: AgentContext) -> str:
+    target, _, _ = word_target_for_seconds(context.turn_seconds)
+    return GUEST_USER_TEMPLATE.render(
+        topic=context.topic,
+        speaker_name=context.speaker_name,
+        round_number=str(context.round_number),
+        total_rounds=str(context.total_rounds),
+        turn_seconds=str(context.turn_seconds),
+        word_target=str(target),
+        language_label=language_label(context.language),
+        mood_name=context.mood.value,
+        mood_style=mood_instruction(context.mood),
+        guest_roster=context.guest_roster,
+        own_memory=context.own_memory,
+        peers_memory=context.peers_memory,
+        already_used=context.already_used,
+        defend_or_refine=context.defend_or_refine,
+        peer_latest=context.peer_latest,
+        guidance=context.guidance,
+        length_instruction=agent_length_instruction(context.turn_seconds),
+        news_context=context.news_context,
+    )
+
+
+# Back-compat aliases used by older call sites / tests
+def render_support_system_prompt(context: AgentContext) -> str:
+    return render_guest_system_prompt(context)
 
 
 def render_opposition_system_prompt(context: AgentContext) -> str:
-    return OPPOSITION_SYSTEM_TEMPLATE.render(
-        language_label=language_label(context.language),
-        mood_style=mood_instruction(context.mood),
-    )
-
-
-def _common_user_values(context: AgentContext) -> dict[str, str]:
-    return {
-        "topic": context.topic,
-        "round_number": str(context.round_number),
-        "total_rounds": str(context.total_rounds),
-        "language_label": language_label(context.language),
-        "mood_name": context.mood.value,
-        "mood_style": mood_instruction(context.mood),
-        "own_memory": context.own_memory,
-        "opponent_memory": context.opponent_memory,
-        "already_used": context.already_used,
-        "defend_or_refine": context.defend_or_refine,
-        "opponent_latest": context.opponent_latest,
-        "guidance": context.guidance,
-    }
+    return render_guest_system_prompt(context)
 
 
 def render_support_user_prompt(context: AgentContext) -> str:
-    return SUPPORT_USER_TEMPLATE.render(**_common_user_values(context))
+    return render_guest_user_prompt(context)
 
 
 def render_opposition_user_prompt(context: AgentContext) -> str:
-    return OPPOSITION_USER_TEMPLATE.render(**_common_user_values(context))
+    return render_guest_user_prompt(context)
+
+
+def render_host_system_prompt(context: HostContext) -> str:
+    return HOST_SYSTEM_TEMPLATE.render(
+        guest_roster=context.guest_roster,
+        language_label=language_label(context.language),
+        mood_style=mood_instruction(context.mood),
+        length_instruction=host_length_instruction(
+            context.turn_seconds, context.segment
+        ),
+    )
+
+
+def _host_segment_instructions(context: HostContext) -> str:
+    if context.segment == HostSegment.OPENING:
+        return (
+            "Open the talk show: welcome the studio audience, state tonight's topic warmly, "
+            f"introduce each guest from this roster: {context.guest_roster}. "
+            f"Mention there will be {context.total_rounds} chat segment(s), "
+            "and invite the first guest (Dave, if present) to start."
+        )
+    if context.segment == HostSegment.ROUND:
+        return (
+            f"Cue segment {context.round_number} of {context.total_rounds}. "
+            "Keep it light and inviting, tease the friendly exchange without taking a side, "
+            "and hand the floor to the first guest."
+        )
+    return (
+        "Close the talk show: thank every guest and the audience, note that the chat sparked "
+        "interesting thoughts (without declaring a winner), and end with a warm TV sign-off."
+    )
+
+
+def render_host_user_prompt(context: HostContext) -> str:
+    return HOST_USER_TEMPLATE.render(
+        segment=context.segment.value,
+        topic=context.topic,
+        language_label=language_label(context.language),
+        mood_name=context.mood.value,
+        mood_style=mood_instruction(context.mood),
+        round_number=str(context.round_number),
+        total_rounds=str(context.total_rounds),
+        turn_seconds=str(context.turn_seconds),
+        guest_roster=context.guest_roster,
+        claim_overview=context.claim_overview,
+        segment_instructions=_host_segment_instructions(context),
+        length_instruction=host_length_instruction(
+            context.turn_seconds, context.segment
+        ),
+        news_context=context.news_context,
+    )

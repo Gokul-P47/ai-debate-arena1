@@ -2,13 +2,17 @@
 
 export type DebateMood = 'SERIOUS' | 'FUN' | 'MIXED';
 
-export type AgentRole = 'support' | 'opposition';
+export type AgentRole = 'host' | 'support' | 'opposition' | 'guest3' | 'guest4';
 
 export interface DebateRequest {
   topic: string;
   mood: DebateMood | string;
   rounds: number;
   language?: string;
+  /** Target spoken length per guest turn (30–120 seconds). */
+  turnSeconds?: number;
+  /** Number of guest participants (2–4). Host is always extra. */
+  participantCount?: number;
 }
 
 export interface DebateMessage {
@@ -17,18 +21,43 @@ export interface DebateMessage {
   content: string;
   timestamp: string;
   roundNumber: number;
+  /** Client id used to sync TTS subtitles. */
+  id?: string;
+  /** Linked ElevenLabs clip when TTS is on. */
+  audioId?: string;
+  /**
+   * How much of `content` to show (0 = hidden, 1 = full).
+   * When undefined, treat as fully visible (TTS off / legacy).
+   */
+  revealRatio?: number;
 }
 
 export interface DebateTurn {
   roundNumber: number;
-  support: DebateMessage;
-  opposition: DebateMessage;
+  messages?: DebateMessage[];
+  support?: DebateMessage;
+  opposition?: DebateMessage;
+}
+
+export interface ParticipantSummary {
+  role: AgentRole;
+  name: string;
+  points: string[];
 }
 
 export interface DebateSummaryData {
   text: string;
   supportPoints: string[];
   oppositionPoints: string[];
+  participants?: ParticipantSummary[];
+}
+
+export interface ShowParticipant {
+  role: AgentRole;
+  name: string;
+  label: string;
+  stance?: string;
+  theme?: string;
 }
 
 export interface DebateMetadata {
@@ -65,9 +94,21 @@ export type DebateStreamEventType =
   | 'turn_started'
   | 'token'
   | 'message_completed'
+  | 'audio_ready'
   | 'status'
   | 'debate_completed'
   | 'error';
+
+export interface AudioClip {
+  role: AgentRole;
+  speaker: string;
+  roundNumber: number;
+  audioId: string;
+  audioUrl: string;
+  mimeType?: string;
+  /** Transcript message id this clip narrates. */
+  messageId?: string;
+}
 
 export interface DebateStreamHandlers {
   onEvent: (event: DebateStreamEventType, data: Record<string, unknown>) => void;

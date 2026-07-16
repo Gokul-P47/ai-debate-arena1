@@ -27,10 +27,7 @@ api.interceptors.response.use(
         .filter(Boolean)
         .join('; ');
     } else {
-      message =
-        error.response?.data?.message ??
-        error.message ??
-        'An unexpected error occurred';
+      message = error.response?.data?.message ?? error.message ?? 'An unexpected error occurred';
     }
 
     return Promise.reject(new Error(message || 'An unexpected error occurred'));

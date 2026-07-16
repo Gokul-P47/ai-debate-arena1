@@ -31,7 +31,7 @@ async def stream_debate(request: DebateRequest) -> StreamingResponse:
     """Stream debate tokens and lifecycle events via Server-Sent Events.
 
     Events: debate_started, turn_started, token, message_completed,
-    status, debate_completed, error.
+    audio_ready, status, debate_completed, error.
     """
 
     async def event_generator() -> AsyncIterator[str]:

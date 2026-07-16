@@ -54,7 +54,7 @@ class DebateClaim(BaseModel):
 
 
 class AgentClaimMemory(BaseModel):
-    """Claim memory owned by a single debate side."""
+    """Claim memory owned by a single guest."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -86,14 +86,25 @@ class DebateState(BaseModel):
     topic: str
     language: str
     mood: str
+    # Legacy two-guest fields kept for UI/tests; also included in guest_memories.
     support_memory: AgentClaimMemory = Field(..., serialization_alias="supportMemory")
     opposition_memory: AgentClaimMemory = Field(
         ...,
         serialization_alias="oppositionMemory",
     )
+    guest_memories: list[AgentClaimMemory] = Field(
+        default_factory=list,
+        serialization_alias="guestMemories",
+        description="All guest claim memories in speaking order.",
+    )
     current_round: int = Field(default=0, serialization_alias="currentRound")
 
     def memory_for(self, role: SpeakerRole) -> AgentClaimMemory:
+        for mem in self.guest_memories:
+            if mem.role == role:
+                return mem
         if role == SpeakerRole.SUPPORT:
             return self.support_memory
-        return self.opposition_memory
+        if role == SpeakerRole.OPPOSITION:
+            return self.opposition_memory
+        raise KeyError(f"No claim memory for role {role}")

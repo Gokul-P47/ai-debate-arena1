@@ -2,15 +2,15 @@
 
 Living document tracking what has been implemented in this repository. Updated after each development session or code change.
 
-**Last updated:** 2026-07-13
+**Last updated:** 2026-07-15
 
 ---
 
 ## Current Phase
 
-**Phase 4 — Frontend Integration** (debate show UI wired to live API)
+**Phase 4 — Frontend Integration** (TV talk-show UI wired to live API)
 
-Goal: Next.js UI starts debates against the backend and reveals Support vs Opposition turns like a live show.
+Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradictions.
 
 ---
 
@@ -40,49 +40,55 @@ Goal: Next.js UI starts debates against the backend and reveals Support vs Oppos
 | -------- | ------ | -------- |
 | `GET /api/v1/health` | Done | `{"status": "UP", "service": "AI Debate Arena API"}` |
 | `POST /api/v1/debates` | Done | Full `DebateResponse` with transcript, turns, summary, metadata |
-| `POST /api/v1/debates/stream` | Done | SSE token stream (`token`, `turn_started`, `message_completed`, …) |
+| `POST /api/v1/debates/stream` | Done | SSE: tokens + `audio_ready` (ElevenLabs), overlapped TTS pipeline |
+| `GET /api/v1/audio/{id}` | Done | Serves cached TTS mp3 clips |
 
 ### Backend — Layered Architecture
 
 | Layer | Status | Files |
 | ----- | ------ | ----- |
-| Routes | Done | `app/api/routes/health.py`, `debate.py` |
-| Services | Done | `debate_service`, claim `memory_service`, `claim_extractor`, `contradiction_analyzer`, `context_builder` |
-| Agents | Done | `app/agents/support_agent.py`, `opposition_agent.py` |
+| Routes | Done | `health.py`, `debate.py`, `audio.py` |
+| Services | Done | `debate_service` (N-guest loop + TTS‖LLM overlap), claim memory, `tts_service`, `audio_cache` |
+| Agents | Done | `host_agent`, `guest_agent` (+ legacy support/opposition wrappers) |
 | Providers | Done | `app/providers/` — OpenAI, Grok, Gemini + `get_provider()` factory |
-| Schemas | Done | `app/schemas/debate_request.py`, `debate_response.py` |
-| Core | Done | `config.py`, `prompts.py`, `prompt_templates.py` (dynamic Support/Opposition) |
+| Schemas | Done | `debate_request` (`participantCount` 2–4), `debate_response`, roles |
+| Core | Done | `config.py`, `participants.py` roster, `prompt_templates.py` |
 | Utils | Done | `app/utils/logger.py` |
 
 ### Backend — Configuration
 
 | Item | Status | Notes |
 | ---- | ------ | ----- |
-| Pydantic settings | Done | `LLM_PROVIDER`, per-provider keys/models, `SUMMARY_INTERVAL_TURNS`, `RECENT_MESSAGE_LIMIT` |
-| `.env.example` | Done | Template for OpenAI, Grok, Gemini, and active provider |
+| Pydantic settings | Done | LLM keys, ElevenLabs TTS voices (host + 4 guests), memory tuning |
+| `.env.example` | Done | Template for OpenAI, Grok, Gemini, ElevenLabs, and active provider |
 
 ### Backend — Schemas
 
 | Model | Status | Fields |
 | ----- | ------ | ------ |
-| `DebateRequest` | Done | `topic`, `rounds`, `mood` (`SERIOUS`/`FUN`/`MIXED`), `language` |
-| `DebateMessage` | Done | `speaker`, `role`, `content`, `timestamp`, `roundNumber` |
-| `DebateTurn` | Done | `roundNumber`, `support`, `opposition` |
-| `DebateSummary` | Done | `text`, `supportPoints`, `oppositionPoints` |
+| `DebateRequest` | Done | `topic`, `rounds`, `mood`, `language`, `turnSeconds`, `participantCount` (2–4) |
+| `DebateMessage` | Done | `speaker`, `role` (`host`/`support`/`opposition`/`guest3`/`guest4`), … |
+| `DebateTurn` | Done | `roundNumber`, `messages[]` (+ legacy support/opposition) |
+| `DebateSummary` | Done | `text`, `supportPoints`, `oppositionPoints`, `participants[]` |
 | `DebateMetadata` | Done | `provider`, `model`, `totalRounds`, timestamps |
-| `DebateResponse` | Done | transcript + `claimMemory` (`DebateState` with per-agent claims) |
-| Claim models | Done | `DebateClaim`, `ClaimStatus`, `AgentClaimMemory`, `DebateState` |
+| `DebateResponse` | Done | transcript + `claimMemory` (`DebateState` with per-guest claims) |
+| Claim models | Done | `DebateClaim`, `ClaimStatus`, `AgentClaimMemory`, `DebateState.guestMemories` |
+
+### Backend — Multi-guest talk show
+
+| Item | Status | Notes |
+| ---- | ------ | ----- |
+| Guest roster | Done | Advocate, Friendly Critic, Pragmatist, Wild Card |
+| N-guest round loop | Done | Host → each guest once per segment → Host close; peers may contradict |
+| Per-guest claim memory | Done | `MemoryService` keyed by guest role; peer contradiction ingest |
+| SSE `debate_started` | Done | Emits `participantCount` + `participants` |
 
 ### Backend — Tests & Tooling
 
 | Item | Status | Notes |
 | ---- | ------ | ----- |
-| Health endpoint test | Done | `backend/tests/test_health.py` — passing |
-| Provider factory tests | Done | `backend/tests/test_providers.py` |
-| Debate orchestration tests | Done | `backend/tests/test_debate.py` — service + endpoint with fake provider |
-| Memory / prompt tests | Done | Claim memory, extractor, contradiction analyzer, JSON parse |
-| `requirements.txt` | Done | fastapi, uvicorn, openai, google-genai, python-dotenv, pydantic, pydantic-settings, pytest, httpx |
-| `backend/.gitignore` | Done | Python, venv, env, IDE exclusions |
+| Health / providers / debate / TTS tests | Done | Including 4-guest stream turn-order test |
+| `requirements.txt` | Done | fastapi, uvicorn, openai, google-genai, … |
 | `backend/README.md` | Done | Setup, run, test, and roadmap docs |
 
 ### Frontend — Application Core
@@ -101,31 +107,27 @@ Goal: Next.js UI starts debates against the backend and reveals Support vs Oppos
 | --------- | ------ | -------- |
 | Button, Input, Select, Card, Loading | Done | `frontend/src/components/common/` |
 | Navbar, Footer | Done | `frontend/src/components/layout/` |
-| DebateForm, DebateArena, AgentPanel | Done | `frontend/src/components/debate/` |
-| DebateMessage, DebateSummary | Done | `frontend/src/components/debate/` |
+| DebateForm (guests 2–4 control) | Done | `frontend/src/components/debate/` |
+| DebateArena / DebateStage (N guests) | Done | Dynamic Host + guest lineup |
+| AgentPanel / DebateMessage / DebateSummary | Done | Themes for guest3 / guest4 |
 
 ### Frontend — State, Services & Types
 
 | Item | Status | Location |
 | ---- | ------ | -------- |
-| Zustand debate store | Done | `frontend/src/store/debateStore.ts` |
-| `useDebate` hook | Done | `frontend/src/hooks/useDebate.ts` |
-| Axios API client | Done | `frontend/src/lib/api.ts` |
-| Debate service | Done | `frontend/src/services/debateService.ts` → `POST /api/v1/debates` |
-| TypeScript types | Done | Aligned with backend `transcript` / `summary` / `metadata` |
-| Theme tokens | Done | `frontend/src/styles/theme.ts` |
-| Debate show arena | Done | Live badge, VS stage, sequential message reveal, speaking glow |
-| API client timeout | Done | 180s for multi-round LLM debates |
-| CORS | Done | Backend allows `localhost:3000` |
+| Zustand debate store | Done | `participantCount` + `participants` |
+| `useDebate` hook | Done | Sends / applies `participantCount` from SSE |
+| Debate service | Done | Stream + sync include `participantCount` |
+| TypeScript types | Done | Roles + `ShowParticipant` / summary participants |
+| Hosted debate flow | Done | Host + 2–4 guests, soft contradictions |
+| ElevenLabs TTS + overlap | Done | Voices for host + 4 guests |
+| Stage characters + audience sounds | Done | Dynamic lineup lean / speak poses |
 
 ### Frontend — Tooling
 
 | Item | Status | Notes |
 | ---- | ------ | ----- |
-| TypeScript | Done | Strict typing throughout |
-| Tailwind CSS v4 | Done | Dark mode AI theme (blue/purple/gray) |
-| ESLint | Done | Next.js default config |
-| Prettier | Done | `.prettierrc` + `npm run format` |
+| TypeScript / Tailwind / ESLint / Prettier | Done | |
 | `.env.local.example` | Done | `NEXT_PUBLIC_API_URL=http://localhost:8000` |
 | `frontend/README.md` | Done | Setup, dev, and roadmap docs |
 
@@ -144,6 +146,8 @@ Goal: Next.js UI starts debates against the backend and reveals Support vs Oppos
 - Database / persistence
 - Additional LLM providers beyond OpenAI / Grok / Gemini
 - CI/CD pipeline
+- Streaming TTS (chunked audio) — currently full-utterance synthesis per turn
+- Configurable guest personas (custom names/stances beyond the fixed roster)
 
 ---
 
@@ -164,3 +168,10 @@ Goal: Next.js UI starts debates against the backend and reveals Support vs Oppos
 | 2026-07-13 | Frontend form now sends mood, rounds, and language (incl. Tamil) to the API |
 | 2026-07-13 | Live SSE token streaming for debates (`POST /api/v1/debates/stream`) + frontend live arena |
 | 2026-07-13 | Upgraded ContextBuilder prompts, rich claim extraction, LLM contradiction/defense, anti-repetition |
+| 2026-07-13 | Added Host Agent (opening / round announce / closing); arena shows Host + Support + Opposition |
+| 2026-07-13 | ElevenLabs TTS with overlapped pipeline (TTS A ‖ LLM B) + frontend audio queue |
+| 2026-07-13 | Configurable turn length (30–120s) from frontend; prompts sized to spoken word targets |
+| 2026-07-13 | Subtitle-synced UI: hide LLM text until TTS plays, reveal words with audio |
+| 2026-07-14 | Stage characters (speak/listen animations) + audience clap/cheer Web Audio |
+| 2026-07-15 | Reframed as AI Talk Show: friendly TV prompts, soft opposition, studio UI |
+| 2026-07-15 | Multi-guest shows: `participantCount` 2–4 (Host + Advoc / Critic / Pragmatist / Wild Card), peer contradictions, stage/arena/form wiring |
