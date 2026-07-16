@@ -6,8 +6,7 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost
 
 export const APP_NAME = 'AI Talk Show';
 
-export const APP_TAGLINE =
-  'A hilarious TV-style talk show — Host plus 2–4 guests sharing views, banter, and witty jokes.';
+export const APP_TAGLINE = 'A hilarious TV-style talk show';
 
 export const DEBATE_MOODS: { value: DebateMood; label: string }[] = [
   { value: 'MIXED', label: 'Friendly' },

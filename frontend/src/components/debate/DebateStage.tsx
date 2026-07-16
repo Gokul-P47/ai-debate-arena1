@@ -69,6 +69,44 @@ export function DebateStage({ speakingRole, isLive }: DebateStageProps) {
       ].join(' ')}
       aria-label="Live talk-show studio"
     >
+      {/* Sliding Curtains/Screens (Velvet Red Curtains) */}
+      <div
+        className={`absolute inset-y-0 left-0 w-1/2 z-40 transition-transform duration-1000 ease-in-out shadow-[5px_0_25px_rgba(0,0,0,0.8)] ${
+          isLive ? '-translate-x-full' : 'translate-x-0'
+        }`}
+        style={{
+          background:
+            'repeating-linear-gradient(to right, #3f0712 0%, #7f1d1d 10%, #991b1b 20%, #b91c1c 30%, #991b1b 40%, #7f1d1d 50%, #3f0712 60%)',
+          borderRight: '3px solid #f59e0b',
+        }}
+        aria-hidden
+      >
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 opacity-45 select-none">
+          <div className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+          <span className="text-[10px] font-bold tracking-[0.25em] text-amber-200 rotate-180 [writing-mode:vertical-lr]">
+            ON
+          </span>
+        </div>
+      </div>
+      <div
+        className={`absolute inset-y-0 right-0 w-1/2 z-40 transition-transform duration-1000 ease-in-out shadow-[-5px_0_25px_rgba(0,0,0,0.8)] ${
+          isLive ? 'translate-x-full' : 'translate-x-0'
+        }`}
+        style={{
+          background:
+            'repeating-linear-gradient(to right, #3f0712 0%, #7f1d1d 10%, #991b1b 20%, #b91c1c 30%, #991b1b 40%, #7f1d1d 50%, #3f0712 60%)',
+          borderLeft: '3px solid #f59e0b',
+        }}
+        aria-hidden
+      >
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 opacity-45 select-none">
+          <div className="h-2 w-2 rounded-full bg-amber-400" />
+          <span className="text-[10px] font-bold tracking-[0.25em] text-amber-200 [writing-mode:vertical-lr]">
+            AIR
+          </span>
+        </div>
+      </div>
+
       <div className="pointer-events-none absolute inset-0 debate-stage-bg" aria-hidden />
       <div className="pointer-events-none absolute inset-0 debate-stage-curtains" aria-hidden />
       <div

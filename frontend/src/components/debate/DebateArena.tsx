@@ -2,6 +2,7 @@
 
 'use client';
 
+import { useEffect } from 'react';
 import { Pause, Play, Square } from 'lucide-react';
 
 import { AgentPanel } from '@/components/debate/AgentPanel';
@@ -38,6 +39,18 @@ export function DebateArena() {
   const activeSubtitleMessageId = useDebateStore((state) => state.activeSubtitleMessageId);
   const playbackSpeed = useDebateStore((state) => state.playbackSpeed);
   const setPlaybackSpeed = useDebateStore((state) => state.setPlaybackSpeed);
+
+  useEffect(() => {
+    if (loading || debateId) {
+      const timer = setTimeout(() => {
+        document.getElementById('debate-arena')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, debateId]);
 
   const speakingRole = ttsEnabled ? playingRole : (streamingDraft?.role ?? playingRole);
   useAudienceSounds(speakingRole);
@@ -222,7 +235,7 @@ export function DebateArena() {
         </div>
       )}
 
-      <DebateStage speakingRole={speakingRole} isLive={Boolean(isLive || debateId)} />
+      <DebateStage speakingRole={speakingRole} isLive={isLive} />
 
       <div className="mb-4">
         <AgentPanel

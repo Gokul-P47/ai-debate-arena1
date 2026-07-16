@@ -1,9 +1,7 @@
-"""Debate endpoints — blocking and streaming."""
-
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.schemas.debate_request import DebateRequest
@@ -27,7 +25,7 @@ def _format_sse(event: str, data: dict) -> str:
 
 
 @router.post("/stream")
-async def stream_debate(request: DebateRequest) -> StreamingResponse:
+async def stream_debate(request_data: DebateRequest, request: Request) -> StreamingResponse:
     """Stream debate tokens and lifecycle events via Server-Sent Events.
 
     Events: debate_started, turn_started, token, message_completed,
@@ -35,7 +33,7 @@ async def stream_debate(request: DebateRequest) -> StreamingResponse:
     """
 
     async def event_generator() -> AsyncIterator[str]:
-        async for item in _debate_service.stream_debate(request):
+        async for item in _debate_service.stream_debate(request_data, client_request=request):
             yield _format_sse(item["event"], item["data"])
 
     return StreamingResponse(

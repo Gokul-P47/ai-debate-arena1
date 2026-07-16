@@ -29,6 +29,7 @@ from app.services.context_builder import ContextBuilder
 from app.services.contradiction_analyzer import ContradictionAnalyzer
 from app.services.memory_service import MemoryService
 from app.services.tts_service import ElevenLabsTTSService
+from fastapi import Request
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -158,6 +159,7 @@ class DebateService:
         role: SpeakerRole,
         round_number: int,
         memory: MemoryService,
+        client_request: Request | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         yield {
             "event": "turn_started",
@@ -170,6 +172,9 @@ class DebateService:
 
         parts: list[str] = []
         async for chunk in agent.stream(prompt):
+            if client_request and await client_request.is_disconnected():
+                logger.info("Client disconnected during token streaming. Aborting.")
+                return
             parts.append(chunk)
             yield {
                 "event": "token",
@@ -261,7 +266,11 @@ class DebateService:
             for g in guests
         }
 
-    async def stream_debate(self, request: DebateRequest) -> AsyncIterator[dict[str, Any]]:
+    async def stream_debate(
+        self,
+        request: DebateRequest,
+        client_request: Request | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         settings = get_settings()
         try:
             provider = self._resolve_provider()
@@ -320,6 +329,9 @@ class DebateService:
         )
 
         try:
+            if client_request and await client_request.is_disconnected():
+                logger.info("Client disconnected. Aborting debate.")
+                return
             opening = context_builder.build_host_prompt(
                 topic=request.topic,
                 mood=request.mood,
@@ -336,6 +348,7 @@ class DebateService:
                 role=SpeakerRole.HOST,
                 round_number=1,
                 memory=memory,
+                client_request=client_request,
             ):
                 yield event
             pending_tts = self._start_tts(
@@ -345,6 +358,9 @@ class DebateService:
             )
 
             for round_number in range(1, request.rounds + 1):
+                if client_request and await client_request.is_disconnected():
+                    logger.info("Client disconnected. Aborting debate.")
+                    return
                 round_prompt = context_builder.build_host_prompt(
                     topic=request.topic,
                     mood=request.mood,
@@ -363,6 +379,7 @@ class DebateService:
                         role=SpeakerRole.HOST,
                         round_number=round_number,
                         memory=memory,
+                        client_request=client_request,
                     ),
                 ):
                     yield event
@@ -376,6 +393,9 @@ class DebateService:
                 peer_latest: str | None = None
 
                 for guest in guests:
+                    if client_request and await client_request.is_disconnected():
+                        logger.info("Client disconnected. Aborting debate.")
+                        return
                     agent = guest_agents[guest.role]
                     prompt = context_builder.build_guest_prompt(
                         guest=guest,
@@ -396,6 +416,7 @@ class DebateService:
                             role=guest.role,
                             round_number=round_number,
                             memory=memory,
+                            client_request=client_request,
                         ),
                     ):
                         yield event
@@ -464,6 +485,7 @@ class DebateService:
                     role=SpeakerRole.HOST,
                     round_number=request.rounds,
                     memory=memory,
+                    client_request=client_request,
                 ),
             ):
                 yield event
