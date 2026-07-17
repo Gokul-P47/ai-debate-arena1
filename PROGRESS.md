@@ -2,7 +2,7 @@
 
 Living document tracking what has been implemented in this repository. Updated after each development session or code change.
 
-**Last updated:** 2026-07-15
+**Last updated:** 2026-07-17
 
 ---
 
@@ -110,6 +110,7 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 | DebateForm (guests 2–4 control) | Done | `frontend/src/components/debate/` |
 | DebateArena / DebateStage (N guests) | Done | Dynamic Host + guest lineup |
 | AgentPanel / DebateMessage / DebateSummary | Done | Themes for guest3 / guest4 |
+| Voice topic input | Done | Web Speech API via `useSpeechInput` (Chrome/Edge) |
 
 ### Frontend — State, Services & Types
 
@@ -142,7 +143,6 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 
 ## Not Yet Implemented
 
-- Voice input functionality
 - Database / persistence
 - Additional LLM providers beyond OpenAI / Grok / Gemini
 - CI/CD pipeline
@@ -175,3 +175,6 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 | 2026-07-14 | Stage characters (speak/listen animations) + audience clap/cheer Web Audio |
 | 2026-07-15 | Reframed as AI Talk Show: friendly TV prompts, soft opposition, studio UI |
 | 2026-07-15 | Multi-guest shows: `participantCount` 2–4 (Host + Advoc / Critic / Pragmatist / Wild Card), peer contradictions, stage/arena/form wiring |
+| 2026-07-17 | Fixed Stop Show: invalidate SSE session so buffered events can't restart the show; clear draft/audio on stop |
+| 2026-07-17 | Voice input for topic: Web Speech API hook + DebateForm mic toggle (matches selected language) |
+| 2026-07-17 | Fixed Stop Show for real: shared abort/session across Form+Arena `useDebate` instances; cancel SSE reader |

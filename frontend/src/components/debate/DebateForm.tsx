@@ -2,13 +2,15 @@
 
 'use client';
 
-import { Mic, Play } from 'lucide-react';
+import { useCallback } from 'react';
+import { Mic, MicOff, Play } from 'lucide-react';
 
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { useDebate } from '@/hooks/useDebate';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import {
   DEBATE_LANGUAGES,
   DEBATE_MOODS,
@@ -42,13 +44,31 @@ export function DebateForm() {
     startDebate,
   } = useDebate();
 
+  const busy = loading || revealing || streaming;
+
+  const handleTranscript = useCallback(
+    (text: string) => {
+      setTopic(text);
+    },
+    [setTopic],
+  );
+
+  const {
+    supported: voiceSupported,
+    listening,
+    error: voiceError,
+    toggle: toggleVoice,
+  } = useSpeechInput({
+    language,
+    disabled: busy,
+    onTranscript: handleTranscript,
+  });
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     document.getElementById('debate-arena')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     await startDebate();
   };
-
-  const busy = loading || revealing || streaming;
 
   return (
     <Card variant="gradient-border" padding="lg" className="w-full max-w-2xl border-amber-500/10">
@@ -64,11 +84,14 @@ export function DebateForm() {
 
         <Input
           label="Tonight's topic"
-          placeholder="What should the guests talk about?"
+          placeholder={
+            listening ? 'Listening… speak your topic' : 'What should the guests talk about?'
+          }
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           required
           disabled={busy}
+          aria-describedby={listening ? 'voice-listening-status' : undefined}
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -114,7 +137,7 @@ export function DebateForm() {
             options={DEBATE_LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            disabled={busy}
+            disabled={busy || listening}
           />
         </div>
 
@@ -143,10 +166,59 @@ export function DebateForm() {
           </div>
         </div>
 
-        <Button type="button" variant="outline" className="w-full sm:w-auto" disabled>
-          <Mic className="h-4 w-4" aria-hidden="true" />
-          Voice Input (soon)
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className={[
+              'w-full sm:w-auto',
+              listening
+                ? 'border-rose-500/50 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 hover:border-rose-500/70'
+                : '',
+            ].join(' ')}
+            onClick={toggleVoice}
+            disabled={busy || !voiceSupported}
+            aria-pressed={listening}
+            title={
+              !voiceSupported
+                ? 'Voice input needs Chrome or Edge'
+                : listening
+                  ? 'Stop listening'
+                  : 'Dictate topic with your microphone'
+            }
+          >
+            {listening ? (
+              <>
+                <MicOff className="h-4 w-4 animate-pulse" aria-hidden="true" />
+                Listening… tap to stop
+              </>
+            ) : (
+              <>
+                <Mic className="h-4 w-4" aria-hidden="true" />
+                Voice Input
+              </>
+            )}
+          </Button>
+
+          {listening && (
+            <p id="voice-listening-status" role="status" className="text-xs text-rose-300/90">
+              Speak your topic in{' '}
+              {DEBATE_LANGUAGES.find((l) => l.value === language)?.label ?? language}.
+            </p>
+          )}
+
+          {!voiceSupported && (
+            <p className="text-xs text-slate-500">
+              Voice input needs Chrome or Edge with microphone access.
+            </p>
+          )}
+
+          {voiceError && (
+            <p role="alert" className="text-xs text-amber-400">
+              {voiceError}
+            </p>
+          )}
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button

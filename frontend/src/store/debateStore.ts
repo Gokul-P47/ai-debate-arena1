@@ -355,16 +355,22 @@ export const useDebateStore = create<DebateState>((set, get) => ({
   setPaused: (paused: boolean) => set({ paused }),
   setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
   stopDebate: () =>
-    set((state) => ({
+    set({
       audioQueue: [],
       playingRole: null,
       activeSubtitleMessageId: null,
+      streamingDraft: null,
       streaming: false,
       loading: false,
       paused: false,
       statusMessage: 'Show stopped.',
-      transcript: state.transcript.map((m) => ({ ...m, revealRatio: 1 })),
-    })),
+      summary: null,
+      debateId: null,
+      transcript: [],
+      metadata: null,
+      newsArticles: [],
+      ttsEnabled: false,
+    }),
   reset: () =>
     set((state) => ({
       ...initialState,

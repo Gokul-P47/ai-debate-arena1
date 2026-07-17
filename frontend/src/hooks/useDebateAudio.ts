@@ -39,12 +39,21 @@ export function useDebateAudio() {
     };
 
     const onEnded = () => {
+      if (!useDebateStore.getState().streaming && useDebateStore.getState().audioQueue.length === 0) {
+        playingIdRef.current = null;
+        return;
+      }
       playingIdRef.current = null;
       useDebateStore.getState().finishSubtitle();
       useDebateStore.getState().advanceAudioQueue();
     };
 
     const onError = () => {
+      // Clearing src on Stop triggers error — ignore when nothing is queued.
+      if (useDebateStore.getState().audioQueue.length === 0) {
+        playingIdRef.current = null;
+        return;
+      }
       playingIdRef.current = null;
       useDebateStore.getState().finishSubtitle();
       useDebateStore.getState().advanceAudioQueue();
@@ -85,6 +94,8 @@ export function useDebateAudio() {
     const next = audioQueue[0];
     if (!next) {
       if (!audio.paused) audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
       playingIdRef.current = null;
       if (playingRole !== null) {
         useDebateStore.getState().setPlayingRole(null);

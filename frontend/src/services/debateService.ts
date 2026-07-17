@@ -59,35 +59,48 @@ export async function streamDebate(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  const abortReader = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal?.addEventListener('abort', abortReader, { once: true });
 
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split('\n\n');
-    buffer = parts.pop() ?? '';
+  try {
+    while (true) {
+      if (signal?.aborted) break;
 
-    for (const part of parts) {
-      const lines = part.split('\n');
-      let eventName: DebateStreamEventType | '' = '';
-      const dataLines: string[] = [];
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      for (const line of lines) {
-        if (line.startsWith('event:')) {
-          eventName = line.slice(6).trim() as DebateStreamEventType;
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).trim());
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+
+      for (const part of parts) {
+        if (signal?.aborted) break;
+
+        const lines = part.split('\n');
+        let eventName: DebateStreamEventType | '' = '';
+        const dataLines: string[] = [];
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim() as DebateStreamEventType;
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+
+        if (!eventName || dataLines.length === 0) continue;
+
+        try {
+          const data = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
+          handlers.onEvent(eventName, data);
+        } catch {
+          // Ignore malformed chunks
         }
       }
-
-      if (!eventName || dataLines.length === 0) continue;
-
-      try {
-        const data = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
-        handlers.onEvent(eventName, data);
-      } catch {
-        // Ignore malformed chunks
-      }
     }
+  } finally {
+    signal?.removeEventListener('abort', abortReader);
   }
 }

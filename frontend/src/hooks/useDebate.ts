@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 
 import { unlockAudienceAudio } from '@/lib/audienceSounds';
 import * as debateService from '@/services/debateService';
@@ -15,6 +15,31 @@ import type {
   DebateSummaryData,
   ShowParticipant,
 } from '@/types/debate';
+
+/**
+ * Shared across every `useDebate()` caller (Form starts, Arena stops).
+ * Per-instance refs caused Stop to abort a different controller than Start.
+ */
+let activeAbort: AbortController | null = null;
+let activeSession = 0;
+
+function beginStreamSession(): { controller: AbortController; session: number } {
+  activeAbort?.abort();
+  const controller = new AbortController();
+  activeAbort = controller;
+  activeSession += 1;
+  return { controller, session: activeSession };
+}
+
+function stopStreamSession(): void {
+  activeSession += 1;
+  activeAbort?.abort();
+  activeAbort = null;
+}
+
+function isLiveSession(session: number, controller: AbortController): boolean {
+  return session === activeSession && !controller.signal.aborted;
+}
 
 /**
  * Provides debate form state and starts a live streamed debate show.
@@ -47,9 +72,6 @@ export function useDebate() {
   const setPaused = useDebateStore((s) => s.setPaused);
   const stopDebateStore = useDebateStore((s) => s.stopDebate);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const sessionRef = useRef(0);
-
   const startDebate = useCallback(async () => {
     const state = useDebateStore.getState();
     const nextTopic = state.topic.trim();
@@ -58,11 +80,7 @@ export function useDebate() {
       return;
     }
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    sessionRef.current += 1;
-    const session = sessionRef.current;
+    const { controller, session } = beginStreamSession();
 
     state.clearAudio();
     state.setPaused(false);
@@ -86,7 +104,7 @@ export function useDebate() {
         },
         {
           onEvent: (event, data) => {
-            if (session !== sessionRef.current) return;
+            if (!isLiveSession(session, controller)) return;
             const store = useDebateStore.getState();
 
             switch (event) {
@@ -179,7 +197,7 @@ export function useDebate() {
         controller.signal,
       );
 
-      if (session === sessionRef.current) {
+      if (isLiveSession(session, controller)) {
         const store = useDebateStore.getState();
         if (store.streaming) {
           store.setStreaming(false);
@@ -187,7 +205,7 @@ export function useDebate() {
         }
       }
     } catch (err) {
-      if (session !== sessionRef.current) return;
+      if (!isLiveSession(session, controller)) return;
       if (controller.signal.aborted) return;
       const message = err instanceof Error ? err.message : 'Failed to start debate';
       const current = useDebateStore.getState();
@@ -226,7 +244,7 @@ export function useDebate() {
     paused,
     setPaused,
     stopDebate: useCallback(() => {
-      abortRef.current?.abort();
+      stopStreamSession();
       stopDebateStore();
     }, [stopDebateStore]),
   };
