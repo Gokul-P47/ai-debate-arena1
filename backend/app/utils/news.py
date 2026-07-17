@@ -12,8 +12,8 @@ async def fetch_latest_news(query: str, max_results: int = 5) -> list[dict[str, 
     if not query.strip():
         return []
     
-    encoded_query = urllib.parse.quote(query.strip())
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
+    encoded_query = urllib.parse.quote(f"{query.strip()} when:7d")
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
     
     headers = {
         "User-Agent": (

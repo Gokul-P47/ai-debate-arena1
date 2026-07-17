@@ -10,7 +10,7 @@ Living document tracking what has been implemented in this repository. Updated a
 
 **Phase 4 — Frontend Integration** (TV talk-show UI wired to live API)
 
-Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradictions.
+Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with natural conversation.
 
 ---
 
@@ -48,7 +48,7 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 | Layer | Status | Files |
 | ----- | ------ | ----- |
 | Routes | Done | `health.py`, `debate.py`, `audio.py` |
-| Services | Done | `debate_service` (N-guest loop + TTS‖LLM overlap), claim memory, `tts_service`, `audio_cache` |
+| Services | Done | `debate_service` (N-guest loop + TTS‖LLM overlap), full-transcript context, `tts_service`, `audio_cache` |
 | Agents | Done | `host_agent`, `guest_agent` (+ legacy support/opposition wrappers) |
 | Providers | Done | `app/providers/` — OpenAI, Grok, Gemini + `get_provider()` factory |
 | Schemas | Done | `debate_request` (`participantCount` 2–4), `debate_response`, roles |
@@ -71,16 +71,18 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 | `DebateTurn` | Done | `roundNumber`, `messages[]` (+ legacy support/opposition) |
 | `DebateSummary` | Done | `text`, `supportPoints`, `oppositionPoints`, `participants[]` |
 | `DebateMetadata` | Done | `provider`, `model`, `totalRounds`, timestamps |
-| `DebateResponse` | Done | transcript + `claimMemory` (`DebateState` with per-guest claims) |
-| Claim models | Done | `DebateClaim`, `ClaimStatus`, `AgentClaimMemory`, `DebateState.guestMemories` |
+| `DebateResponse` | Done | transcript + summary; `claimMemory` kept for API shape (unused in prompts) |
+| Claim models | Done | Legacy helpers retained; generation uses full conversation transcript |
 
 ### Backend — Multi-guest talk show
 
 | Item | Status | Notes |
 | ---- | ------ | ----- |
-| Guest roster | Done | Advocate, Friendly Critic, Pragmatist, Wild Card |
-| N-guest round loop | Done | Host → each guest once per segment → Host close; peers may contradict |
-| Per-guest claim memory | Done | `MemoryService` keyed by guest role; peer contradiction ingest |
+| Guest roster | Done | Dave / Sarah / Winston / Chloe with distinct personalities + viewpoints |
+| N-guest round loop | Done | Host → each guest once per segment → Host close; natural reactions |
+| Full transcript context | Done | Every LLM turn gets complete dialogue so far (no claim/defend prompts) |
+| Topic knowledge pack | Done | Related-topic browse → private FOR/AGAINST/hooks notes (not news scripts); controversy mode |
+| Natural conversation prompts | Done | Comedy-podcast hangout + hard TOPIC LOCK on every host/guest LLM call |
 | SSE `debate_started` | Done | Emits `participantCount` + `participants` |
 
 ### Backend — Tests & Tooling
@@ -120,7 +122,7 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 | `useDebate` hook | Done | Sends / applies `participantCount` from SSE |
 | Debate service | Done | Stream + sync include `participantCount` |
 | TypeScript types | Done | Roles + `ShowParticipant` / summary participants |
-| Hosted debate flow | Done | Host + 2–4 guests, soft contradictions |
+| Hosted debate flow | Done | Host + 2–4 guests, natural conversation prompts |
 | ElevenLabs TTS + overlap | Done | Voices for host + 4 guests |
 | Stage characters + audience sounds | Done | Dynamic lineup lean / speak poses |
 
@@ -178,3 +180,18 @@ Goal: Next.js UI runs a friendly Host + 2–4 guest talk show with soft contradi
 | 2026-07-17 | Fixed Stop Show: invalidate SSE session so buffered events can't restart the show; clear draft/audio on stop |
 | 2026-07-17 | Voice input for topic: Web Speech API hook + DebateForm mic toggle (matches selected language) |
 | 2026-07-17 | Fixed Stop Show for real: shared abort/session across Form+Arena `useDebate` instances; cancel SSE reader |
+| 2026-07-17 | Natural conversation refactor: full-transcript context, personality/mood/host prompts, removed claim-driven generation |
+| 2026-07-17 | Playful prompts + topic lock + simple words; LLM browses headlines into casual notes (no raw news dump) |
+| 2026-07-17 | Real-news grounding: required headlines/facts, anti-filler length rules, unused-headline tracking |
+| 2026-07-17 | Natural continuity: no source citations; in-round reply-to chain so guests continue each other |
+| 2026-07-17 | Banned stock food/filler clichés; required per-turn real scenario seed from news facts |
+| 2026-07-17 | Multi-angle show: claim unique scenario seeds per turn; prompts push moving across stories |
+| 2026-07-17 | Topic knowledge pack (not news scripts); strong mood acting; controversy = mixed opinions |
+| 2026-07-17 | Prompt realism refactor: conversation-first, optional humor, agreement/listening, lean system/user split |
+| 2026-07-17 | Comedy-podcast prompts (Two Minds style): warm comedy-forward tone, Dave/Sarah vibes, witty host intro/outro |
+| 2026-07-17 | Topic lock on every LLM call: AgentPrompt.topic + topic_locked_prompts prefix for host/guests |
+| 2026-07-17 | Anti-auto-counter + anti-tangent: agree/build first; brief nod then return to show topic |
+| 2026-07-17 | Shorter host turns; skip round-1 host double-talk; topic nicknames + desi hangout flavor |
+| 2026-07-17 | Shared SIMPLE_LANGUAGE rule for host + all guests — plain words with light humor |
+| 2026-07-17 | Removed UI status labels (Host/Dave is speaking, Speaking/Listening badges) |
+| 2026-07-17 | KEEP_LISTENERS_HOOKED shared rule — natural, varied, interesting turns for all speakers |

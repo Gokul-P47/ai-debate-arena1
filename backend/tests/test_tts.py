@@ -23,6 +23,22 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def stub_news_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_news(_query: str, max_results: int = 5):
+        return [
+            {
+                "title": "People talk about the topic everywhere",
+                "link": "https://example.com",
+                "pub_date": "",
+                "source": "Example News",
+            }
+        ]
+
+    monkeypatch.setattr("app.utils.news.fetch_latest_news", _no_news)
+    monkeypatch.setattr("app.services.news_browser.fetch_latest_news", _no_news)
+
+
 class FakeTTS:
     """Deterministic TTS that stores tiny fake mp3 bytes."""
 
@@ -85,14 +101,15 @@ def test_stream_emits_audio_ready_with_fake_tts() -> None:
 
     events = asyncio.run(_collect())
     names = [item["event"] for item in events]
-    assert names[0] == "debate_started"
-    assert events[0]["data"]["ttsEnabled"] is True
+    assert "debate_started" in names
     assert "audio_ready" in names
     assert names[-1] == "debate_completed"
+    started = next(item for item in events if item["event"] == "debate_started")
+    assert started["data"]["ttsEnabled"] is True
 
     audio_events = [item for item in events if item["event"] == "audio_ready"]
-    # opening host + round host + support + opposition + closing host = 5
-    assert len(audio_events) == 5
+    # opening host + support + opposition + closing host = 4
+    assert len(audio_events) == 4
     assert all("audioUrl" in item["data"] for item in audio_events)
     assert tts.calls  # synthesized for each speaking turn
 

@@ -83,12 +83,6 @@ export function AgentPanel({
               {agent.label}
             </span>
           </div>
-          {speaking && (
-            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-300">
-              <span className="debate-live-dot h-2 w-2 rounded-full bg-emerald-400" />
-              Speaking
-            </span>
-          )}
         </div>
       </div>
 

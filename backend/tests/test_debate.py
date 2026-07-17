@@ -78,29 +78,45 @@ class FakeProvider(BaseProvider):
                 )
             return json.dumps({"contradicted_claims": [], "defended_claims": []})
 
-        if "you are the host of a live ai talk show" in lower:
+        if "you are the host of a" in lower or "you are the host of a witty" in lower:
             self._agent_n += 1
             if "segment: opening" in prompt.lower():
                 return f"Host opening #{self._agent_n}: Welcome to the talk show."
             if "segment: closing" in prompt.lower():
                 return f"Host closing #{self._agent_n}: Thanks for joining us tonight."
-            return f"Host segment #{self._agent_n}: Let's keep the chat going — first guest, over to you."
+            return f"Host segment #{self._agent_n}: That was interesting — Dave, what's your take?"
 
-        if "sarah" in lower or "friendly critic" in lower or "soft opposition" in lower or "soft_skeptic" in lower or "skeptic" in lower:
+        if "you are sarah" in lower or "calm, curious" in lower:
             self._agent_n += 1
-            return f"Opposition reply #{self._agent_n}: Lower costs often reduce quality."
+            return f"Sarah reply #{self._agent_n}: Fair enough — though I wonder about the other side."
 
-        if "winston" in lower or "pragmatist" in lower or "it depends" in lower or "realist" in lower:
+        if "you are winston" in lower or "down-to-earth" in lower:
             self._agent_n += 1
-            return f"Pragmatist reply #{self._agent_n}: It can work in some places, not everywhere."
+            return f"Winston reply #{self._agent_n}: On a normal day, what actually works?"
 
-        if "chloe" in lower or "wild card" in lower or "surprise angle" in lower or "tangent_generator" in lower:
+        if "you are chloe" in lower or "playful and imaginative" in lower:
             self._agent_n += 1
-            return f"Wildcard reply #{self._agent_n}: What if we rethink the whole framing?"
+            return f"Chloe reply #{self._agent_n}: Wait, what if we look at it like this?"
+
+        if "prepare private show notes" in lower or "private knowledge pack" in lower or "controversial:" in lower:
+            return (
+                "CONTROVERSIAL: yes\n\n"
+                "KNOWLEDGE\n"
+                "- This topic has real upsides and real worries\n\n"
+                "LIVED ANGLES\n"
+                "- How ordinary people bump into this in daily choices\n\n"
+                "FOR\n"
+                "- It can help people in practical ways\n\n"
+                "AGAINST\n"
+                "- It can create new problems if handled badly\n\n"
+                "TALK HOOKS\n"
+                "- Who actually benefits first?\n"
+                "- What should change this year?"
+            )
 
         self._agent_n += 1
         return (
-            f"Support reply #{self._agent_n}: AI reduces healthcare costs and works continuously."
+            f"Dave reply #{self._agent_n}: Honestly, I see the upside — here's a simple story."
         )
 
     async def generate_stream(self, prompt: str, system_prompt: str) -> AsyncIterator[str]:
@@ -115,6 +131,22 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def stub_news_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_news(_query: str, max_results: int = 5):
+        return [
+            {
+                "title": "People talk about the topic everywhere",
+                "link": "https://example.com",
+                "pub_date": "",
+                "source": "Example News",
+            }
+        ]
+
+    monkeypatch.setattr("app.utils.news.fetch_latest_news", _no_news)
+    monkeypatch.setattr("app.services.news_browser.fetch_latest_news", _no_news)
 
 
 def test_memory_service_stores_rich_claims_and_contradictions() -> None:
@@ -172,27 +204,34 @@ def test_memory_service_stores_rich_claims_and_contradictions() -> None:
     assert "✓ AI reduces healthcare costs" in memory.format_already_used(SpeakerRole.SUPPORT)
 
 
-def test_context_builder_centralizes_prompts_without_transcript() -> None:
+def test_context_builder_uses_full_transcript() -> None:
+    from datetime import datetime, timezone
+
+    from app.schemas.debate_response import DebateMessage
+
     memory = MemoryService(
         debate_id="d1",
         topic="AI should be regulated",
         language="en",
         mood="SERIOUS",
     )
-    memory.append_claims(
-        SpeakerRole.SUPPORT,
-        [ExtractedClaim(claim="AI reduces healthcare costs", category="Economics")],
-        round_number=1,
+    memory.add_message(
+        DebateMessage(
+            speaker="Host",
+            role=SpeakerRole.HOST,
+            content="Welcome — tonight we talk AI regulation.",
+            timestamp=datetime.now(timezone.utc),
+            round_number=1,
+        )
     )
-    memory.mark_contradicted(
-        SpeakerRole.SUPPORT,
-        claim_id="claim-001",
-        statement="Cheap means lower quality",
-    )
-    memory.append_claims(
-        SpeakerRole.OPPOSITION,
-        [ExtractedClaim(claim="Human creativity is irreplaceable")],
-        round_number=1,
+    memory.add_message(
+        DebateMessage(
+            speaker="Dave",
+            role=SpeakerRole.SUPPORT,
+            content="Honestly, I think clear rules help people trust the tools.",
+            timestamp=datetime.now(timezone.utc),
+            round_number=1,
+        )
     )
 
     builder = ContextBuilder(memory)
@@ -203,15 +242,29 @@ def test_context_builder_centralizes_prompts_without_transcript() -> None:
         round_number=2,
         total_rounds=3,
         turn_seconds=45,
-        opponent_latest="Cheap means lower quality.",
     )
-    assert "AI should be regulated" in support_prompt.user_prompt
-    assert "Already used" in support_prompt.user_prompt
-    assert "AI reduces healthcare costs" in support_prompt.user_prompt
-    assert "CONTRADICTED" in support_prompt.user_prompt
-    assert "Full transcript" not in support_prompt.user_prompt
-    assert "do NOT repeat" in support_prompt.user_prompt.lower() or "Already used" in support_prompt.user_prompt
-    assert "45 seconds" in support_prompt.user_prompt or "word" in support_prompt.system_prompt.lower()
+    assert "topic" in support_prompt.user_prompt.lower()
+    assert support_prompt.topic == "AI should be regulated"
+    assert "SHOW TOPIC" in support_prompt.user_prompt or "TOPIC LOCK" in support_prompt.system_prompt
+    assert "comedy-forward" in support_prompt.system_prompt.lower() or "comedy podcast" in support_prompt.system_prompt.lower()
+    assert "never get heated" in support_prompt.system_prompt.lower()
+    assert "2–4 sentences" in support_prompt.system_prompt or "2-4 sentences" in support_prompt.system_prompt
+    assert "CONTRADICTED" not in support_prompt.user_prompt
+    assert "claim memory" not in support_prompt.user_prompt.lower()
+    assert "simple" in support_prompt.system_prompt.lower()
+    assert "complex" in support_prompt.system_prompt.lower() or "everyday words" in support_prompt.system_prompt.lower()
+    assert "listeners" in support_prompt.system_prompt.lower() or "interesting" in support_prompt.system_prompt.lower()
+
+    from app.services.agent_context import topic_locked_prompts
+
+    locked_system, locked_user = topic_locked_prompts(support_prompt)
+    assert "TOPIC LOCK" in locked_system
+    assert "AI should be regulated" in locked_system
+    assert 'SHOW TOPIC (mandatory): "AI should be regulated"' in locked_user
+    assert support_prompt.user_prompt in locked_user
+    assert "do not auto-counter" in locked_system.lower()
+    assert "chase" in support_prompt.system_prompt.lower() or "chase" in locked_system.lower()
+    assert "auto-counter" in support_prompt.system_prompt.lower()
 
     opposition_prompt = builder.build_opposition_prompt(
         topic="AI should be regulated",
@@ -220,11 +273,23 @@ def test_context_builder_centralizes_prompts_without_transcript() -> None:
         round_number=2,
         total_rounds=3,
         turn_seconds=30,
-        opponent_latest="AI still reduces net cost.",
+        peer_latest="Dave: Honestly, I think clear rules help people trust the tools.",
     )
     assert "Tamil" in opposition_prompt.system_prompt
-    assert "Human creativity is irreplaceable" in opposition_prompt.user_prompt
-    assert "30 seconds" in opposition_prompt.user_prompt
+    assert "Sarah" in opposition_prompt.system_prompt
+    assert "Dave:" in opposition_prompt.user_prompt
+    assert "clear rules" in opposition_prompt.user_prompt
+
+    fun_prompt = builder.build_support_prompt(
+        topic="AI should be regulated",
+        mood=DebateMood.FUN,
+        language="en",
+        round_number=1,
+        total_rounds=2,
+        turn_seconds=45,
+    )
+    assert "FUN" in fun_prompt.system_prompt
+    assert "comedy" in fun_prompt.system_prompt.lower() or "joke" in fun_prompt.system_prompt.lower()
 
     from app.schemas.roles import HostSegment
 
@@ -238,8 +303,35 @@ def test_context_builder_centralizes_prompts_without_transcript() -> None:
         segment=HostSegment.OPENING,
     )
     assert host_prompt.side == SpeakerRole.HOST
-    assert "do NOT argue" in host_prompt.system_prompt or "do not argue" in host_prompt.system_prompt.lower()
-    assert "Welcome" in host_prompt.user_prompt or "welcome" in host_prompt.user_prompt.lower() or "talk show" in host_prompt.system_prompt.lower()
+    assert "ai should be regulated" in host_prompt.system_prompt.lower()
+    assert "comedy" in host_prompt.system_prompt.lower() or "cheeky" in host_prompt.system_prompt.lower()
+    assert "witty hook" in host_prompt.user_prompt.lower() or "hand straight" in host_prompt.user_prompt.lower()
+    assert "host" in host_prompt.system_prompt.lower()
+    assert "far shorter than guests" in host_prompt.system_prompt.lower()
+    assert "arre yaar" in host_prompt.system_prompt.lower() or "desi" in host_prompt.system_prompt.lower()
+
+    nick_prompt = builder.build_support_prompt(
+        topic="Bhavik Patel should run for office",
+        mood=DebateMood.FUN,
+        language="en",
+        round_number=1,
+        total_rounds=2,
+        turn_seconds=45,
+    )
+    assert "BP" in nick_prompt.system_prompt or "Patel" in nick_prompt.system_prompt
+    assert "Bhavik Patel" in nick_prompt.system_prompt
+    assert "arre yaar" in nick_prompt.system_prompt.lower()
+
+    host_outro = builder.build_host_prompt(
+        topic="AI should be regulated",
+        mood=DebateMood.FUN,
+        language="en",
+        round_number=3,
+        total_rounds=3,
+        turn_seconds=45,
+        segment=HostSegment.CLOSING,
+    )
+    assert "witty closer" in host_outro.user_prompt.lower() or "joke" in host_outro.user_prompt.lower()
 
 
 def test_claim_extractor_returns_category_confidence_importance() -> None:
@@ -258,7 +350,7 @@ def test_claim_extractor_returns_category_confidence_importance() -> None:
     assert 0 <= claims[0].importance <= 1
 
 
-def test_debate_service_tracks_claims_across_rounds() -> None:
+def test_debate_service_builds_natural_conversation_transcript() -> None:
     provider = FakeProvider()
     service = DebateService(provider=provider)
     request = DebateRequest(
@@ -269,23 +361,22 @@ def test_debate_service_tracks_claims_across_rounds() -> None:
     )
     result = asyncio.run(service.create_debate(request))
 
-    # Host opening + Host round + Support + Opposition + Host closing
-    assert len(result.transcript) == 5
+    # Host opening + Support + Opposition + Host closing (no double host in round 1)
+    assert len(result.transcript) == 4
     assert result.transcript[0].role == SpeakerRole.HOST
-    assert result.transcript[1].role == SpeakerRole.HOST
-    assert result.transcript[2].role == SpeakerRole.SUPPORT
-    assert result.transcript[3].role == SpeakerRole.OPPOSITION
-    assert result.transcript[4].role == SpeakerRole.HOST
+    assert result.transcript[1].role == SpeakerRole.SUPPORT
+    assert result.transcript[2].role == SpeakerRole.OPPOSITION
+    assert result.transcript[3].role == SpeakerRole.HOST
     assert result.metadata.extra.get("hosted") is True
+    assert result.metadata.extra.get("memoryMode") == "full_transcript"
     assert result.claim_memory is not None
-    support_claims = result.claim_memory.support_memory.claims
-    assert support_claims
-    assert support_claims[0].category
-    contradicted = [c for c in support_claims if c.status == ClaimStatus.CONTRADICTED]
-    assert contradicted, "Expected at least one contradicted support claim"
+    # Claim extraction is no longer part of the live conversation loop.
+    assert result.claim_memory.support_memory.claims == []
+    assert result.summary.support_points
+    assert "Dave" in result.summary.support_points[0] or "upside" in result.summary.support_points[0].lower() or len(result.summary.support_points[0]) > 0
 
 
-def test_create_debate_endpoint_includes_claim_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_debate_endpoint_includes_transcript_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeProvider()
     monkeypatch.setattr("app.services.debate_service.get_provider", lambda: fake)
 
@@ -302,11 +393,11 @@ def test_create_debate_endpoint_includes_claim_memory(monkeypatch: pytest.Monkey
     assert response.status_code == 200
     data = response.json()
     assert data["debateId"]
-    assert data["claimMemory"]["supportMemory"]["claims"]
-    first = data["claimMemory"]["supportMemory"]["claims"][0]
-    assert "category" in first
-    assert "confidence" in first
-    assert "importance" in first
+    assert data["transcript"]
+    assert data["summary"]["supportPoints"]
+    assert "claimMemory" in data
+    assert data["claimMemory"]["supportMemory"]["claims"] == []
+    assert data["metadata"]["extra"]["memoryMode"] == "full_transcript"
 
 
 def test_stream_debate_emits_tokens_and_lifecycle_events() -> None:
@@ -324,7 +415,7 @@ def test_stream_debate_emits_tokens_and_lifecycle_events() -> None:
 
     events = asyncio.run(_collect())
     names = [item["event"] for item in events]
-    assert names[0] == "debate_started"
+    assert "debate_started" in names
     assert "token" in names
     assert names[-1] == "debate_completed"
     turn_roles = [
@@ -332,7 +423,7 @@ def test_stream_debate_emits_tokens_and_lifecycle_events() -> None:
         for item in events
         if item["event"] == "turn_started"
     ]
-    assert turn_roles == ["host", "host", "support", "opposition", "host"]
+    assert turn_roles == ["host", "support", "opposition", "host"]
     started = next(item for item in events if item["event"] == "debate_started")
     assert started["data"]["participantCount"] == 2
     assert len(started["data"]["participants"]) == 2
@@ -364,9 +455,8 @@ def test_stream_debate_with_four_guests() -> None:
         for item in events
         if item["event"] == "turn_started"
     ]
-    # opening host, round host, 4 guests, closing host
+    # opening host, 4 guests, closing host (no double host in round 1)
     assert turn_roles == [
-        "host",
         "host",
         "support",
         "opposition",

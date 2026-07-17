@@ -28,7 +28,6 @@ export function DebateArena() {
   const streamingDraft = useDebateStore((state) => state.streamingDraft);
   const loading = useDebateStore((state) => state.loading);
   const streaming = useDebateStore((state) => state.streaming);
-  const statusMessage = useDebateStore((state) => state.statusMessage);
   const metadata = useDebateStore((state) => state.metadata);
   const debateId = useDebateStore((state) => state.debateId);
   const playingRole = useDebateStore((state) => state.playingRole);
@@ -218,22 +217,7 @@ export function DebateArena() {
             {ttsEnabled ? ' · ElevenLabs TTS' : ''}
           </p>
         )}
-
-        {statusMessage && (
-          <p className="mt-3 text-sm text-teal-200/90" role="status">
-            {statusMessage}
-          </p>
-        )}
       </div>
-
-      {loading && transcript.length === 0 && !streamingDraft && (
-        <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-6 text-center">
-          <p className="text-sm font-medium text-amber-100">Warming up the studio…</p>
-          <p className="mt-1 text-xs text-slate-400">
-            Guests take the couch — captions roll with the voice.
-          </p>
-        </div>
-      )}
 
       <DebateStage speakingRole={speakingRole} isLive={isLive} />
 

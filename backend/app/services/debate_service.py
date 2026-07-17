@@ -24,9 +24,7 @@ from app.schemas.debate_response import (
 )
 from app.schemas.roles import HostSegment
 from app.services.agent_context import AgentPrompt
-from app.services.claim_extractor import ClaimExtractor
 from app.services.context_builder import ContextBuilder
-from app.services.contradiction_analyzer import ContradictionAnalyzer
 from app.services.memory_service import MemoryService
 from app.services.tts_service import ElevenLabsTTSService
 from fastapi import Request
@@ -36,7 +34,7 @@ logger = get_logger(__name__)
 
 
 class DebateService:
-    """Host + configurable guests with claim memory and overlapped TTS."""
+    """Host + configurable guests with full-transcript context and overlapped TTS."""
 
     def __init__(
         self,
@@ -59,61 +57,6 @@ class DebateService:
         if settings.llm_provider == "grok":
             return settings.grok_model
         return settings.gemini_model
-
-    async def _ingest_response(
-        self,
-        *,
-        memory: MemoryService,
-        extractor: ClaimExtractor,
-        analyzer: ContradictionAnalyzer,
-        role: SpeakerRole,
-        response_text: str,
-        topic: str,
-        round_number: int,
-    ) -> None:
-        if role == SpeakerRole.HOST:
-            return
-
-        extracted = await extractor.extract(response_text=response_text, topic=topic)
-        memory.append_claims(role, extracted, round_number=round_number)
-
-        peer_roles = memory.other_guest_roles(role)
-        analysis = await analyzer.analyze(
-            response_text=response_text,
-            topic=topic,
-            target_claims=memory.open_claims_for_roles(peer_roles),
-            own_claims=memory.memory_for(role).open_claims(),
-        )
-
-        # Claim ids are unique globally; find owner among peers for each contradiction.
-        peer_claim_owner: dict[str, SpeakerRole] = {}
-        for peer in peer_roles:
-            for claim in memory.memory_for(peer).claims:
-                peer_claim_owner[claim.id] = peer
-
-        for link in analysis.contradictions:
-            owner = peer_claim_owner.get(link.claim_id)
-            if owner is None:
-                continue
-            memory.mark_contradicted(
-                owner,
-                claim_id=link.claim_id,
-                statement=link.reason,
-            )
-        for link in analysis.defenses:
-            memory.mark_defended(
-                role,
-                claim_id=link.claim_id,
-                statement=link.reason,
-            )
-
-    async def _safe_ingest(self, **kwargs: Any) -> str | None:
-        try:
-            await self._ingest_response(**kwargs)
-            return None
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Claim ingest failed: %s", exc)
-            return str(exc)
 
     async def _make_audio_event(
         self,
@@ -281,12 +224,19 @@ class DebateService:
         guests = guests_for_count(request.participant_count)
         host_agent = HostAgent(provider)
         guest_agents = self._guest_agents(provider, guests)
-        extractor = ClaimExtractor(provider)
-        analyzer = ContradictionAnalyzer(provider)
         tts = self._resolve_tts()
 
-        from app.utils.news import fetch_latest_news
-        news_articles = await fetch_latest_news(request.topic)
+        from app.services.news_browser import browse_topic_news
+
+        yield {
+            "event": "status",
+            "data": {"message": "Researching the topic…"},
+        }
+        news_articles, browsed_notes = await browse_topic_news(
+            topic=request.topic,
+            language=request.language,
+            provider=provider,
+        )
 
         debate_id = str(uuid4())
         created_at = datetime.now(timezone.utc)
@@ -298,6 +248,7 @@ class DebateService:
             guests=guests,
             news_articles=news_articles,
         )
+        memory.set_browsed_notes(browsed_notes)
         context_builder = ContextBuilder(memory)
         pending_tts: asyncio.Task[dict[str, Any] | None] | None = None
         participants_meta = guest_public_meta(len(guests))
@@ -361,33 +312,35 @@ class DebateService:
                 if client_request and await client_request.is_disconnected():
                     logger.info("Client disconnected. Aborting debate.")
                     return
-                round_prompt = context_builder.build_host_prompt(
-                    topic=request.topic,
-                    mood=request.mood,
-                    language=request.language,
-                    round_number=round_number,
-                    total_rounds=request.rounds,
-                    turn_seconds=request.turn_seconds,
-                    segment=HostSegment.ROUND,
-                )
-                async for event in self._interleave_tts_with_turn(
-                    pending_tts,
-                    self._stream_turn(
-                        agent=host_agent,
-                        prompt=round_prompt,
-                        speaker=HOST_SPEAKER_NAME,
-                        role=SpeakerRole.HOST,
+                # Opening already hands off to guests — skip a second host beat in round 1.
+                if round_number > 1:
+                    round_prompt = context_builder.build_host_prompt(
+                        topic=request.topic,
+                        mood=request.mood,
+                        language=request.language,
                         round_number=round_number,
-                        memory=memory,
-                        client_request=client_request,
-                    ),
-                ):
-                    yield event
-                pending_tts = self._start_tts(
-                    tts=tts,
-                    message=memory.messages[-1],
-                    language=request.language,
-                )
+                        total_rounds=request.rounds,
+                        turn_seconds=request.turn_seconds,
+                        segment=HostSegment.ROUND,
+                    )
+                    async for event in self._interleave_tts_with_turn(
+                        pending_tts,
+                        self._stream_turn(
+                            agent=host_agent,
+                            prompt=round_prompt,
+                            speaker=HOST_SPEAKER_NAME,
+                            role=SpeakerRole.HOST,
+                            round_number=round_number,
+                            memory=memory,
+                            client_request=client_request,
+                        ),
+                    ):
+                        yield event
+                    pending_tts = self._start_tts(
+                        tts=tts,
+                        message=memory.messages[-1],
+                        language=request.language,
+                    )
 
                 round_messages: list[DebateMessage] = []
                 peer_latest: str | None = None
@@ -423,26 +376,7 @@ class DebateService:
 
                     guest_message = memory.messages[-1]
                     round_messages.append(guest_message)
-                    peer_latest = guest_message.content
-
-                    yield {
-                        "event": "status",
-                        "data": {"message": f"Updating {guest.name}'s claim memory…"},
-                    }
-                    ingest_error = await self._safe_ingest(
-                        memory=memory,
-                        extractor=extractor,
-                        analyzer=analyzer,
-                        role=guest.role,
-                        response_text=guest_message.content,
-                        topic=request.topic,
-                        round_number=round_number,
-                    )
-                    if ingest_error:
-                        yield {
-                            "event": "status",
-                            "data": {"message": f"Claim update skipped: {ingest_error}"},
-                        }
+                    peer_latest = f"{guest.name}: {guest_message.content.strip()}"
 
                     pending_tts = self._start_tts(
                         tts=tts,
@@ -507,7 +441,7 @@ class DebateService:
                 created_at=created_at,
                 completed_at=completed_at,
                 extra={
-                    "memoryMode": "structured_claims",
+                    "memoryMode": "full_transcript",
                     "streamed": True,
                     "hosted": True,
                     "talkShow": True,
@@ -548,8 +482,14 @@ class DebateService:
         guests = guests_for_count(request.participant_count)
         host_agent = HostAgent(provider)
         guest_agents = self._guest_agents(provider, guests)
-        extractor = ClaimExtractor(provider)
-        analyzer = ContradictionAnalyzer(provider)
+
+        from app.services.news_browser import browse_topic_news
+
+        news_articles, browsed_notes = await browse_topic_news(
+            topic=request.topic,
+            language=request.language,
+            provider=provider,
+        )
 
         debate_id = str(uuid4())
         created_at = datetime.now(timezone.utc)
@@ -559,7 +499,9 @@ class DebateService:
             language=request.language,
             mood=request.mood.value,
             guests=guests,
+            news_articles=news_articles,
         )
+        memory.set_browsed_notes(browsed_notes)
         context_builder = ContextBuilder(memory)
 
         opening = context_builder.build_host_prompt(
@@ -574,16 +516,18 @@ class DebateService:
         memory.add_message(await host_agent.generate(opening))
 
         for round_number in range(1, request.rounds + 1):
-            round_prompt = context_builder.build_host_prompt(
-                topic=request.topic,
-                mood=request.mood,
-                language=request.language,
-                round_number=round_number,
-                total_rounds=request.rounds,
-                turn_seconds=request.turn_seconds,
-                segment=HostSegment.ROUND,
-            )
-            memory.add_message(await host_agent.generate(round_prompt))
+            # Opening already hands off — no second host intro in round 1.
+            if round_number > 1:
+                round_prompt = context_builder.build_host_prompt(
+                    topic=request.topic,
+                    mood=request.mood,
+                    language=request.language,
+                    round_number=round_number,
+                    total_rounds=request.rounds,
+                    turn_seconds=request.turn_seconds,
+                    segment=HostSegment.ROUND,
+                )
+                memory.add_message(await host_agent.generate(round_prompt))
 
             round_messages: list[DebateMessage] = []
             peer_latest: str | None = None
@@ -601,16 +545,7 @@ class DebateService:
                 message = await guest_agents[guest.role].generate(prompt)
                 memory.add_message(message)
                 round_messages.append(message)
-                peer_latest = message.content
-                await self._ingest_response(
-                    memory=memory,
-                    extractor=extractor,
-                    analyzer=analyzer,
-                    role=guest.role,
-                    response_text=message.content,
-                    topic=request.topic,
-                    round_number=round_number,
-                )
+                peer_latest = f"{guest.name}: {message.content.strip()}"
 
             support_msg = next(
                 (m for m in round_messages if m.role == SpeakerRole.SUPPORT),
@@ -659,7 +594,7 @@ class DebateService:
                 created_at=created_at,
                 completed_at=completed_at,
                 extra={
-                    "memoryMode": "structured_claims",
+                    "memoryMode": "full_transcript",
                     "hosted": True,
                     "talkShow": True,
                     "participantCount": len(guests),

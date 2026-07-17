@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from app.providers.base_provider import BaseProvider
 from app.schemas.debate_response import DebateMessage, SpeakerRole
-from app.services.agent_context import AgentPrompt
+from app.services.agent_context import AgentPrompt, topic_locked_prompts
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,9 +29,10 @@ class SupportAgent:
     async def stream(self, prompt: AgentPrompt) -> AsyncIterator[str]:
         """Stream supporting argument tokens as they are generated."""
         logger.info("SupportAgent streaming round %d argument", prompt.round_number)
+        system_prompt, user_prompt = topic_locked_prompts(prompt)
         async for chunk in self._provider.generate_stream(
-            prompt=prompt.user_prompt,
-            system_prompt=prompt.system_prompt,
+            prompt=user_prompt,
+            system_prompt=system_prompt,
         ):
             if chunk:
                 yield chunk

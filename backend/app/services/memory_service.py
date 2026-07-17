@@ -1,4 +1,4 @@
-"""Structured claim memory manager for multi-guest talk shows."""
+"""Conversation state manager: full transcript + optional legacy claim helpers."""
 
 from datetime import datetime, timezone
 
@@ -23,7 +23,11 @@ logger = get_logger(__name__)
 
 
 class MemoryService:
-    """Stores transcript messages and structured per-guest claim memories."""
+    """Stores the full conversation transcript used for LLM context.
+
+    Claim-memory helpers remain for API compatibility / unit tests but are no
+    longer fed into generation prompts.
+    """
 
     def __init__(
         self,
@@ -43,11 +47,12 @@ class MemoryService:
         self._claim_counter = 0
         self._guests = list(guests) if guests is not None else guests_for_count(2)
         self._news_articles = list(news_articles) if news_articles else []
+        self._browsed_notes = ""
+        self._used_scenario_seeds: list[str] = []
 
         self._memories: dict[SpeakerRole, AgentClaimMemory] = {
             g.role: AgentClaimMemory(role=g.role) for g in self._guests
         }
-        # Ensure legacy slots exist even if somehow empty (tests).
         if SpeakerRole.SUPPORT not in self._memories:
             self._memories[SpeakerRole.SUPPORT] = AgentClaimMemory(role=SpeakerRole.SUPPORT)
         if SpeakerRole.OPPOSITION not in self._memories:
@@ -65,6 +70,22 @@ class MemoryService:
     @property
     def news_articles(self) -> list[dict[str, str]]:
         return list(self._news_articles)
+
+    @property
+    def browsed_notes(self) -> str:
+        return self._browsed_notes
+
+    def set_browsed_notes(self, notes: str) -> None:
+        self._browsed_notes = (notes or "").strip()
+
+    def set_news_articles(self, articles: list[dict[str, str]]) -> None:
+        self._news_articles = list(articles) if articles else []
+
+    @property
+    def is_controversial(self) -> bool:
+        from app.services.news_browser import is_controversial_pack
+
+        return is_controversial_pack(self._browsed_notes)
 
     def add_message(self, message: DebateMessage) -> None:
         self._messages.append(message)
@@ -113,6 +134,111 @@ class MemoryService:
 
     def other_guest_roles(self, role: SpeakerRole) -> list[SpeakerRole]:
         return [g.role for g in self._guests if g.role != role]
+
+    def format_conversation_transcript(self) -> str:
+        """Full dialogue so far, grouped by round — primary LLM context."""
+        if not self._messages:
+            return "(The conversation has not started yet.)"
+
+        lines: list[str] = []
+        current_round: int | None = None
+        for message in self._messages:
+            if message.round_number != current_round:
+                current_round = message.round_number
+                lines.append(f"Round {current_round}")
+                lines.append("")
+            speaker = message.speaker or message.role.value
+            lines.append(f"{speaker}:")
+            lines.append(message.content.strip())
+            lines.append("")
+        return "\n".join(lines).strip()
+
+    def format_news_summary(self) -> str:
+        """Casual notes from the LLM news browse (not raw headlines)."""
+        return self._browsed_notes
+
+    def list_background_facts(self) -> list[str]:
+        """Conversation angles from the knowledge pack (hooks + lived angles + knowledge)."""
+        from app.services.news_browser import extract_section_bullets
+
+        pack = self._browsed_notes or ""
+        angles: list[str] = []
+        for section in ("TALK HOOKS", "LIVED ANGLES", "KNOWLEDGE", "FOR", "AGAINST"):
+            for bullet in extract_section_bullets(pack, section):
+                if bullet and bullet not in angles:
+                    angles.append(bullet)
+        if angles:
+            return angles
+        # Fallback: any "- " lines
+        for raw in pack.splitlines():
+            line = raw.strip()
+            if line.startswith("-"):
+                text = line.lstrip("-").strip()
+                if text and not text.upper().startswith("CONTROVERSIAL"):
+                    angles.append(text)
+        if angles:
+            return angles
+        for article in self._news_articles:
+            title = (article.get("title") or "").strip()
+            if title:
+                angles.append(title)
+        return angles
+
+    def unused_background_facts(self) -> list[str]:
+        """Angles not yet assigned as a soft turn hint."""
+        used = {s.lower() for s in self._used_scenario_seeds}
+        return [f for f in self.list_background_facts() if f.lower() not in used]
+
+    def pick_scenario_seed(self) -> str:
+        """Claim the next unused conversation angle (soft hint, not a news script)."""
+        unused = self.unused_background_facts()
+        if not unused:
+            facts = self.list_background_facts()
+            if not facts:
+                return ""
+            idx = len(self._messages) % len(facts)
+            seed = facts[idx]
+        else:
+            seed = unused[0]
+
+        self._used_scenario_seeds.append(seed)
+        return seed
+
+    def format_unused_angles(self) -> str:
+        """List remaining angles so speakers know the show will cover more."""
+        unused = self.unused_background_facts()
+        if not unused:
+            return "(Keep exploring fresh sides of the topic — do not rehash.)"
+        lines = [f"- {fact}" for fact in unused[:6]]
+        return "Other angles still available later:\n" + "\n".join(lines)
+
+    def opinion_brief_for(self, role: SpeakerRole) -> str:
+        """Optional on-topic enrichment — not a mandate to oppose the other guest."""
+        from app.services.news_browser import extract_section_bullets
+
+        pack = self._browsed_notes or ""
+        hooks = extract_section_bullets(pack, "TALK HOOKS")
+        if role == SpeakerRole.SUPPORT:
+            lean = extract_section_bullets(pack, "FOR")[:2]
+        elif role == SpeakerRole.OPPOSITION:
+            # Prefer hooks over AGAINST so Sarah does not auto-counter every turn.
+            lean = extract_section_bullets(pack, "LIVED ANGLES")[:2]
+            if not lean:
+                lean = extract_section_bullets(pack, "AGAINST")[:1]
+        else:
+            lean = []
+
+        points: list[str] = []
+        for bullet in hooks[:3] + lean:
+            if bullet and bullet not in points:
+                points.append(bullet)
+        if not points:
+            return ""
+        label = (
+            "Optional on-topic sparks (enrich the TOPIC — do NOT use to rebut "
+            "the previous speaker every turn; prefer agree + add):"
+        )
+        return label + "\n" + "\n".join(f"- {p}" for p in points[:5])
 
     def _next_claim_id(self) -> str:
         self._claim_counter += 1
@@ -272,28 +398,39 @@ class MemoryService:
         return claims
 
     def summarized_context(self) -> str:
-        blocks: list[str] = []
-        name_by_role = {g.role: g.name for g in self._guests}
-        for guest in self._guests:
-            label = name_by_role.get(guest.role, guest.role.value)
-            blocks.append(f"{label} claims:\n{self.format_claims(guest.role)}")
-        return "\n\n".join(blocks) if blocks else "(No claims yet.)"
+        """Prefer format_conversation_transcript for prompts."""
+        return self.format_conversation_transcript()
+
+    @staticmethod
+    def _snippet(text: str, max_len: int = 160) -> str:
+        cleaned = " ".join(text.split()).strip()
+        if len(cleaned) <= max_len:
+            return cleaned
+        return cleaned[: max_len - 1].rstrip() + "…"
+
+    def _points_for_role(self, role: SpeakerRole) -> list[str]:
+        points = [
+            self._snippet(m.content)
+            for m in self._messages
+            if m.role == role and m.content.strip()
+        ]
+        return points[-3:]
 
     def to_debate_summary(self) -> DebateSummary:
-        support_points = [c.claim for c in self.memory_for(SpeakerRole.SUPPORT).claims]
-        opposition_points = [
-            c.claim for c in self.memory_for(SpeakerRole.OPPOSITION).claims
-        ]
+        support_points = self._points_for_role(SpeakerRole.SUPPORT)
+        opposition_points = self._points_for_role(SpeakerRole.OPPOSITION)
         participants = [
             ParticipantSummary(
                 role=g.role,
                 name=g.name,
-                points=[c.claim for c in self.memory_for(g.role).claims],
+                points=self._points_for_role(g.role),
             )
             for g in self._guests
         ]
+        transcript = self.format_conversation_transcript()
+        preview = self._snippet(transcript, max_len=400) if self._messages else ""
         return DebateSummary(
-            text=self.summarized_context(),
+            text=preview or "Conversation complete.",
             support_points=support_points,
             opposition_points=opposition_points,
             participants=participants,

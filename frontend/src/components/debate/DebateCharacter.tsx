@@ -569,7 +569,7 @@ export function DebateCharacter({
             theme.badge,
           ].join(' ')}
         >
-          {pose === 'speaking' ? '🟢 Speaking' : pose === 'listening' ? '👂 Listening' : label}
+          {label}
         </span>
       </div>
 
