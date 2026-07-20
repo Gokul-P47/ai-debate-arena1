@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Fraunces, Outfit } from 'next/font/google';
 
 import { Footer } from '@/components/layout/Footer';
 import { Navbar } from '@/components/layout/Navbar';
@@ -8,13 +8,13 @@ import { APP_NAME, APP_TAGLINE } from '@/lib/constants';
 import { Providers } from './providers';
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const display = Fraunces({
+  variable: '--font-display',
   subsets: ['latin'],
 });
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+const sans = Outfit({
+  variable: '--font-sans-outfit',
   subsets: ['latin'],
 });
 
@@ -29,8 +29,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
+    <html lang="en" className={`${display.variable} ${sans.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col font-[family-name:var(--font-sans-outfit)]">
         <Providers>
           <Navbar />
           <main className="flex-1">{children}</main>

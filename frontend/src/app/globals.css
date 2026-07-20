@@ -1,38 +1,45 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
-  --background: #0f1117;
-  --foreground: #f1f5f9;
-  --primary-blue: #3b82f6;
-  --primary-purple: #8b5cf6;
-  --dark-gray: #1f2937;
-  --card-bg: #1c2333;
-  --border-color: #2d3748;
+  --background: #0b1218;
+  --foreground: #f4efe6;
+  --studio-teal: #2dd4bf;
+  --studio-coral: #fb7185;
+  --studio-amber: #fbbf24;
+  --studio-navy: #12202c;
+  --card-bg: #14202b;
+  --border-color: #243444;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-primary-blue: var(--primary-blue);
-  --color-primary-purple: var(--primary-purple);
-  --color-dark-gray: var(--dark-gray);
+  --color-studio-teal: var(--studio-teal);
+  --color-studio-coral: var(--studio-coral);
+  --color-studio-amber: var(--studio-amber);
+  --color-studio-navy: var(--studio-navy);
   --color-card-bg: var(--card-bg);
   --color-border: var(--border-color);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans-outfit);
+  --font-display: var(--font-display);
 }
 
 body {
   background-color: var(--background);
   background-image:
-    radial-gradient(ellipse at top, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom right, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(251, 191, 36, 0.16), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 0% 70%, rgba(45, 212, 191, 0.1), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 100% 80%, rgba(251, 113, 133, 0.1), transparent 50%);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-outfit), system-ui, sans-serif;
   min-height: 100vh;
 }
 
-/* Custom scrollbar for dark theme */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -43,10 +50,291 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: #334155;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: #475569;
+}
+
+@keyframes debate-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes debate-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.debate-message-enter {
+  animation: debate-message-in 0.45s ease-out both;
+}
+
+.debate-live-dot {
+  animation: debate-live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes debate-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.debate-stream-cursor {
+  animation: debate-cursor-blink 1s step-end infinite;
+  color: #fcd34d;
+}
+
+/* ——— Talk-show studio stage ——— */
+
+.debate-stage {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 24px 60px -28px rgba(0, 0, 0, 0.7);
+}
+
+.debate-stage-tv {
+  border: 10px solid #0a1016;
+  border-radius: 1.25rem;
+  box-shadow:
+    0 0 0 2px #1f2a36,
+    0 30px 70px -20px rgba(0, 0, 0, 0.75);
+}
+
+.debate-stage-bg {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 15%, rgba(251, 191, 36, 0.22), transparent 60%),
+    radial-gradient(ellipse 40% 50% at 12% 65%, rgba(45, 212, 191, 0.16), transparent 55%),
+    radial-gradient(ellipse 40% 50% at 88% 65%, rgba(251, 113, 133, 0.14), transparent 55%),
+    linear-gradient(180deg, #1a2836 0%, #101820 48%, #0a1016 100%);
+}
+
+.debate-stage-curtains {
+  background:
+    linear-gradient(90deg, rgba(127, 29, 29, 0.45), transparent 18%),
+    linear-gradient(270deg, rgba(127, 29, 29, 0.45), transparent 18%);
+}
+
+.debate-stage-floor {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(15, 23, 42, 0.35) 30%,
+    rgba(2, 6, 23, 0.92) 100%
+  );
+}
+
+.debate-stage-spot {
+  background: radial-gradient(ellipse at center top, rgba(255, 248, 220, 0.18) 0%, transparent 70%);
+}
+
+.debate-audience-head {
+  animation: debate-audience-bob 2.4s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+@keyframes debate-audience-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.debate-char {
+  transition: transform 0.45s ease;
+  transform-origin: bottom center;
+}
+
+.debate-char-z {
+  z-index: 2;
+}
+
+.debate-char--idle {
+  transform: translateY(0) scale(1);
+}
+
+.debate-char--speaking {
+  animation: debate-char-speak-bob 0.9s ease-in-out infinite;
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--char-accent, #fbbf24) 45%, transparent));
+}
+
+.debate-char--listen-left {
+  transform: translateX(-4px) rotate(-3deg) scale(0.96);
+}
+
+.debate-char--listen-right {
+  transform: translateX(4px) rotate(3deg) scale(0.96);
+}
+
+.debate-char--listen-up {
+  transform: translateY(-4px) scale(0.97);
+}
+
+@keyframes debate-char-speak-bob {
+  0%,
+  100% {
+    transform: translateY(0) scale(1.04);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.05);
+  }
+}
+
+.debate-char-figure {
+  transition: filter 0.35s ease;
+}
+
+.debate-char-figure--hot {
+  filter: brightness(1.08);
+}
+
+.debate-char-mouth {
+  transition:
+    rx 0.12s ease,
+    ry 0.12s ease;
+  transform-origin: center;
+}
+
+.debate-char--speaking .debate-char-mouth {
+  animation: debate-mouth-talk 0.28s ease-in-out infinite;
+}
+
+@keyframes debate-mouth-talk {
+  0%,
+  100% {
+    transform: scaleY(0.65);
+  }
+  50% {
+    transform: scaleY(1.25);
+  }
+}
+
+.debate-char--speaking .debate-char-arm--right {
+  animation: debate-gesture-right 1.1s ease-in-out infinite;
+  transform-origin: 82px 82px;
+}
+
+.debate-char--speaking .debate-char-arm--left {
+  animation: debate-gesture-left 1.3s ease-in-out infinite;
+  transform-origin: 38px 82px;
+}
+
+@keyframes debate-gesture-right {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes debate-gesture-left {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-8deg);
+  }
+}
+
+.debate-char--listen-left .debate-char-eye,
+.debate-char--listen-right .debate-char-eye,
+.debate-char--listen-up .debate-char-eye {
+  animation: debate-blink 3.2s ease-in-out infinite;
+}
+
+@keyframes debate-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  94%,
+  96% {
+    transform: scaleY(0.15);
+  }
+}
+
+.debate-char--idle .debate-char-head {
+  animation: debate-idle-nod 4s ease-in-out infinite;
+  transform-origin: 60px 60px;
+}
+
+@keyframes debate-idle-nod {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-1.5deg);
+  }
+  70% {
+    transform: rotate(1deg);
+  }
+}
+
+.debate-sound-bar {
+  display: inline-block;
+  width: 3px;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--char-accent, #fbbf24) 80%, white);
+  animation: debate-sound-pulse 0.55s ease-in-out infinite;
+}
+
+@keyframes debate-sound-pulse {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1.35);
+    opacity: 1;
+  }
+}
+
+@keyframes debate-subtitle-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.debate-subtitle-animation {
+  animation: debate-subtitle-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Pause all stage animations when the show is paused */
+.debate-stage--paused * {
+  animation-play-state: paused !important;
 }

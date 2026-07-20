@@ -1,94 +1,246 @@
-/** Debate configuration form. */
+/** Talk-show episode setup form. */
 
 'use client';
 
-import { useState } from 'react';
-import { Mic, Play } from 'lucide-react';
+import { useCallback } from 'react';
+import { Mic, MicOff, Play } from 'lucide-react';
 
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { useDebate } from '@/hooks/useDebate';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import {
+  DEBATE_LANGUAGES,
   DEBATE_MOODS,
+  guestsForCount,
+  MAX_PARTICIPANT_COUNT,
   MAX_ROUNDS,
+  MAX_TURN_SECONDS,
+  MIN_PARTICIPANT_COUNT,
   MIN_ROUNDS,
-  PLACEHOLDER_MESSAGE,
+  MIN_TURN_SECONDS,
 } from '@/lib/constants';
 
 export function DebateForm() {
-  const { topic, mood, rounds, loading, setTopic, setMood, setRounds, startDebate } = useDebate();
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const {
+    topic,
+    mood,
+    rounds,
+    language,
+    turnSeconds,
+    loading,
+    revealing,
+    streaming,
+    error,
+    setTopic,
+    setMood,
+    setRounds,
+    setLanguage,
+    setTurnSeconds,
+    setParticipantCount,
+    participantCount,
+    startDebate,
+  } = useDebate();
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const busy = loading || revealing || streaming;
+
+  const handleTranscript = useCallback(
+    (text: string) => {
+      setTopic(text);
+    },
+    [setTopic],
+  );
+
+  const {
+    supported: voiceSupported,
+    listening,
+    error: voiceError,
+    toggle: toggleVoice,
+  } = useSpeechInput({
+    language,
+    disabled: busy,
+    onTranscript: handleTranscript,
+  });
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!topic.trim()) {
-      setStatusMessage('Please enter a debate topic.');
-      return;
-    }
-
-    const message = startDebate();
-    setStatusMessage(message);
+    document.getElementById('debate-arena')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    await startDebate();
   };
 
   return (
-    <Card variant="gradient-border" padding="lg" className="w-full max-w-2xl">
+    <Card variant="gradient-border" padding="lg" className="w-full max-w-2xl border-amber-500/10">
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div>
-          <h2 className="text-xl font-semibold text-white">Configure Your Debate</h2>
-          <p className="mt-1 text-sm text-gray-400">
-            Set the topic, mood, and rounds — then let the AI agents battle it out.
+          <h2 className="font-display text-xl font-semibold text-[#f8f1e3]">
+            Cue tonight&apos;s show
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Pick a topic and vibe — guests will chat like a friendly TV panel.
           </p>
         </div>
 
         <Input
-          label="Debate Topic"
-          placeholder="Enter any debate topic..."
+          label="Tonight's topic"
+          placeholder={
+            listening ? 'Listening… speak your topic' : 'What should the guests talk about?'
+          }
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           required
+          disabled={busy}
+          aria-describedby={listening ? 'voice-listening-status' : undefined}
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Select
-            label="Mood"
-            options={DEBATE_MOODS.map((m) => ({ value: m.value, label: m.label }))}
-            value={mood}
-            onChange={(e) => setMood(e.target.value)}
-          />
-
           <Input
-            label="Number of Rounds"
+            label="Chat segments"
             type="number"
             min={MIN_ROUNDS}
             max={MAX_ROUNDS}
             value={rounds}
             onChange={(e) => setRounds(Number(e.target.value))}
+            disabled={busy}
+          />
+          <Input
+            label="Guests on the couch"
+            type="number"
+            min={MIN_PARTICIPANT_COUNT}
+            max={MAX_PARTICIPANT_COUNT}
+            value={participantCount}
+            onChange={(e) => setParticipantCount(Number(e.target.value))}
+            disabled={busy}
           />
         </div>
 
-        <Button type="button" variant="outline" className="w-full sm:w-auto">
-          <Mic className="h-4 w-4" aria-hidden="true" />
-          🎤 Voice Input
-        </Button>
+        <p className="text-xs text-slate-500">
+          Host is always on stage. Guests:{' '}
+          {guestsForCount(participantCount)
+            .map((g) => g.name)
+            .join(' · ')}
+          . Views may agree or gently contradict.
+        </p>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button type="submit" size="lg" isLoading={loading} className="w-full sm:w-auto">
-            <Play className="h-4 w-4" aria-hidden="true" />
-            Start Debate
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Select
+            label="Show vibe"
+            options={DEBATE_MOODS.map((m) => ({ value: m.value, label: m.label }))}
+            value={mood}
+            onChange={(e) => setMood(e.target.value)}
+            disabled={busy}
+          />
+
+          <Select
+            label="Language"
+            options={DEBATE_LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            disabled={busy || listening}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="turn-seconds" className="text-sm font-medium text-slate-300">
+              Guest turn length
+            </label>
+            <span className="text-sm tabular-nums text-amber-200/90">{turnSeconds}s</span>
+          </div>
+          <input
+            id="turn-seconds"
+            type="range"
+            min={MIN_TURN_SECONDS}
+            max={MAX_TURN_SECONDS}
+            step={5}
+            value={turnSeconds}
+            onChange={(e) => setTurnSeconds(Number(e.target.value))}
+            disabled={busy}
+            className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-700 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>{MIN_TURN_SECONDS}s</span>
+            <span>How long each guest speaks</span>
+            <span>{MAX_TURN_SECONDS}s</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className={[
+              'w-full sm:w-auto',
+              listening
+                ? 'border-rose-500/50 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 hover:border-rose-500/70'
+                : '',
+            ].join(' ')}
+            onClick={toggleVoice}
+            disabled={busy || !voiceSupported}
+            aria-pressed={listening}
+            title={
+              !voiceSupported
+                ? 'Voice input needs Chrome or Edge'
+                : listening
+                  ? 'Stop listening'
+                  : 'Dictate topic with your microphone'
+            }
+          >
+            {listening ? (
+              <>
+                <MicOff className="h-4 w-4 animate-pulse" aria-hidden="true" />
+                Listening… tap to stop
+              </>
+            ) : (
+              <>
+                <Mic className="h-4 w-4" aria-hidden="true" />
+                Voice Input
+              </>
+            )}
           </Button>
 
-          {statusMessage && (
-            <p
-              role="status"
-              className={[
-                'text-sm',
-                statusMessage === PLACEHOLDER_MESSAGE ? 'text-blue-400' : 'text-amber-400',
-              ].join(' ')}
-            >
-              {statusMessage}
+          {listening && (
+            <p id="voice-listening-status" role="status" className="text-xs text-rose-300/90">
+              Speak your topic in{' '}
+              {DEBATE_LANGUAGES.find((l) => l.value === language)?.label ?? language}.
+            </p>
+          )}
+
+          {!voiceSupported && (
+            <p className="text-xs text-slate-500">
+              Voice input needs Chrome or Edge with microphone access.
+            </p>
+          )}
+
+          {voiceError && (
+            <p role="alert" className="text-xs text-amber-400">
+              {voiceError}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Button
+            type="submit"
+            size="lg"
+            isLoading={loading}
+            disabled={busy}
+            className="w-full sm:w-auto"
+          >
+            <Play className="h-4 w-4" aria-hidden="true" />
+            {loading ? 'Going live…' : streaming || revealing ? 'On air…' : 'Start Show'}
+          </Button>
+
+          {error && (
+            <p role="alert" className="text-sm text-amber-400">
+              {error}
+            </p>
+          )}
+
+          {!error && loading && (
+            <p role="status" className="text-sm text-teal-300/90">
+              Guests are settling onto the couch…
             </p>
           )}
         </div>

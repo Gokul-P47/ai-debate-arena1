@@ -23,14 +23,15 @@ export function Card({
   if (variant === 'gradient-border') {
     return (
       <div
-        className={['rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 p-px', className].join(
-          ' ',
-        )}
+        className={[
+          'rounded-2xl bg-gradient-to-br from-amber-500/30 via-slate-800/40 to-teal-500/30 p-[1px] shadow-2xl shadow-black/60',
+          className,
+        ].join(' ')}
         {...props}
       >
         <div
           className={[
-            'rounded-[calc(0.75rem-1px)] bg-gray-900/95 backdrop-blur-sm',
+            'rounded-[calc(1rem-1px)] bg-[#0d1620]/98 backdrop-blur-md',
             paddingClasses[padding],
           ].join(' ')}
         >
@@ -43,7 +44,7 @@ export function Card({
   return (
     <div
       className={[
-        'rounded-xl border border-gray-800 bg-gray-900/80 backdrop-blur-sm',
+        'rounded-2xl border border-slate-800/80 bg-[#0c141c]/90 backdrop-blur-md shadow-2xl shadow-black/40',
         paddingClasses[padding],
         className,
       ].join(' ')}

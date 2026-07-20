@@ -10,7 +10,3 @@ export interface HealthResponse {
   status: string;
   service: string;
 }
-
-export interface PlaceholderDebateResponse {
-  message: string;
-}
